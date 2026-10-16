@@ -4,6 +4,8 @@ import (
 	"context"
 
 	cli "github.com/urfave/cli/v3"
+
+	"github.com/verikono/glocalize/apps/glo/internal"
 )
 
 func getParseCmd() *cli.Command {
@@ -11,12 +13,6 @@ func getParseCmd() *cli.Command {
 	return &cli.Command{
 		Name:  "parse",
 		Usage: "merge prisma.schema files into .artifacts/data/schemas/launchboard.schema, then run phi generate",
-		Args: []cli.ArgUsage{
-			{
-				Name:  "source",
-				Usage: "source file to parse from",
-			},
-		},
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "to",
@@ -27,7 +23,7 @@ func getParseCmd() *cli.Command {
 
 			source := c.Args().Get(0)
 			target := c.String("to")
-
+			internal.GetParser(source, target)
 			return nil
 		},
 	}

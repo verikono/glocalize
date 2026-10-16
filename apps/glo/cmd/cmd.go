@@ -7,17 +7,11 @@ import (
 	cli "github.com/urfave/cli/v3"
 )
 
-// Version is the launch version, injected at build time via:
-//
-//	go build -ldflags "-X launchboard.com/launch/cmd.Version=<version>"
-//
-// It defaults to "dev" when running without ldflags (e.g. `go run`).
 var Version = "dev"
 
-// NewApp returns the root `launch` command with all subcommands registered.
 func NewApp() *cli.Command {
 	return &cli.Command{
-		Name:  "glo",
+		Name:  "parse",
 		Usage: "glocalize development tooling",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
