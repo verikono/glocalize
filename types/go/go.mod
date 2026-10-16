@@ -1,0 +1,1 @@
+module github.com/verikono/glocalize/types
