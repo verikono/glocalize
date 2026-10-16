@@ -8,7 +8,7 @@ import (
 )
 
 // ParsePrisma converts a Prisma schema document into a GraphQL schema document.
-func ParsePrisma(schema T.PrismaSchema) (*GT.GraphQLSchema, error) {
+func ParsePrisma(schema GT.PrismaSchema) (*GT.GraphQLSchema, error) {
 	models, err := extractModels(schema)
 	if err != nil {
 		return nil, err
@@ -417,7 +417,7 @@ func dropSpaces(line string) string {
 // "/// parse:ARGUE[...]" directives, and the WEI scalar becomes a Decimal
 // field carrying "/// parse:SCALAR(WEI)". Prisma attributes (@id, @relation,
 // @@map, ...) are not recoverable from GraphQL and are therefore omitted.
-func ParseGQL(schema GraphQLSchema) (*T.PrismaSchema, error) {
+func ParseGQL(schema GT.GraphQLSchema) (*GT.PrismaSchema, error) {
 	lines := strings.Split(schema, "\n")
 
 	var blocks []gqlBlock
