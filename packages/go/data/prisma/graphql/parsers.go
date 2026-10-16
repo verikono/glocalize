@@ -2,81 +2,13 @@ package graphql
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+
+	GT "github.com/verikono/glocalize/types/go"
 )
-
-func ParseGraphQL(schema *PrismaScehma, query string) (*GraphQLSchema, error) {
-
-}
-
-// GqlSchema is a GraphQL schema document (UTF-8) per the GraphQL specification.
-type GqlSchema = string
-
-// PrismaSchema is a Prisma schema document (UTF-8) per the Prisma Schema Language.
-type PrismaSchema = string
-
-// gqlTypeMap mirrors the reference GqlTypeMap: a lowercase Prisma type name to
-// the GraphQL type it renders as. "bytes" is a minimal extension over the
-// reference so the project's own schemas (which use Bytes) parse.
-var gqlTypeMap = map[string]string{
-	"int":      "Int",
-	"string":   "String",
-	"boolean":  "Boolean",
-	"float":    "Float",
-	"bigint":   "BigInt",
-	"datetime": "DateTime",
-	"json":     "String",
-	"decimal":  "String",
-	"bytes":    "String",
-	"wei":      "WEI",
-}
-
-var (
-	modelStartRe = regexp.MustCompile(`^\s*model.*`)
-	enumStartRe  = regexp.MustCompile(`^\s*enum.*`)
-	modelEndRe   = regexp.MustCompile(`^\s*}.*`)
-	commentLine  = regexp.MustCompile(`^\s*\/\/.+$`)
-	attributeRe  = regexp.MustCompile(`^\s*@@.*`)
-	// a "//@@ property" line declares a field as if it were a normal property.
-	propertyDirectiveRe = regexp.MustCompile(`^\s.\/\/@@ property`)
-	// skip a field or enum option whose name starts with whitespace or contains "//".
-	skipNameRe = regexp.MustCompile(`^\s|\/\/`)
-)
-
-// ParsablePropertyShape is the parsed form of a single Prisma model field.
-type ParsablePropertyShape struct {
-	Name       string
-	Type       string
-	Optional   bool
-	Multi      bool
-	Params     []string
-	Directives []string
-	Docblocks  []string
-}
-
-// ParsableModelShape is the parsed form of a Prisma model block.
-type ParsableModelShape struct {
-	Name  string
-	Props []ParsablePropertyShape
-	Docs  []string
-}
-
-// ParsableEnumShape is the parsed form of a Prisma enum block.
-type ParsableEnumShape struct {
-	Name    string
-	Options []string
-	Docs    []string
-}
-
-// parserContext carries the extracted models and enums through parsing.
-type parserContext struct {
-	models []*ParsableModelShape
-	enums  []*ParsableEnumShape
-}
 
 // ParsePrisma converts a Prisma schema document into a GraphQL schema document.
-func ParsePrisma(schema PrismaSchema) (*GqlSchema, error) {
+func ParsePrisma(schema T.PrismaSchema) (*GT.GraphQLSchema, error) {
 	models, err := extractModels(schema)
 	if err != nil {
 		return nil, err
@@ -485,7 +417,7 @@ func dropSpaces(line string) string {
 // "/// parse:ARGUE[...]" directives, and the WEI scalar becomes a Decimal
 // field carrying "/// parse:SCALAR(WEI)". Prisma attributes (@id, @relation,
 // @@map, ...) are not recoverable from GraphQL and are therefore omitted.
-func ParseGQL(schema GqlSchema) (*PrismaSchema, error) {
+func ParseGQL(schema GraphQLSchema) (*T.PrismaSchema, error) {
 	lines := strings.Split(schema, "\n")
 
 	var blocks []gqlBlock
@@ -574,21 +506,6 @@ func ParseGQL(schema GqlSchema) (*PrismaSchema, error) {
 
 	out := strings.Join(parts, "\n\n")
 	return &out, nil
-}
-
-// gqlBlock is a parsed GraphQL enum or type block.
-type gqlBlock struct {
-	kind    string // "model" or "enum"
-	name    string
-	docs    []string
-	options []string
-	fields  []gqlField
-}
-
-// gqlField is a single field declaration inside a GraphQL type block.
-type gqlField struct {
-	docs []string
-	line string
 }
 
 // renderPrismaEnum renders a GraphQL enum as a Prisma enum block.

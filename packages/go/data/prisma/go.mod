@@ -1,7 +1,7 @@
-module github.com/verikono/glocalize/data/prisma
+module github.com/verikono/glocalize/packages/go/data/prisma
 
-require (
-    "github.com/verikono/types" v0.1.0
-)
+go 1.27.0
 
-replace github.com/verikono/glocalize/types => ../../../../types/go
+replace github.com/verikono/glocalize/types/go => ../../../../types/go
+
+require github.com/verikono/glocalize/types/go v0.1.0

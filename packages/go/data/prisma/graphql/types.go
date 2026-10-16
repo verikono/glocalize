@@ -1,5 +1,14 @@
 package graphql
 
+import (
+	GT "github.com/verikono/glocalize/types/go"
+)
+
+type (
+	GraphQLSchema GT.GraphQLSchema
+	PrismaSchema  = GT.PrismaSchema
+)
+
 // ParsablePropertyShape is the parsed form of a single Prisma model field.
 type ParsablePropertyShape struct {
 	Name       string
@@ -29,4 +38,19 @@ type ParsableEnumShape struct {
 type parserContext struct {
 	models []*ParsableModelShape
 	enums  []*ParsableEnumShape
+}
+
+// gqlBlock is a parsed GraphQL enum or type block.
+type gqlBlock struct {
+	kind    string // "model" or "enum"
+	name    string
+	docs    []string
+	options []string
+	fields  []gqlField
+}
+
+// gqlField is a single field declaration inside a GraphQL type block.
+type gqlField struct {
+	docs []string
+	line string
 }

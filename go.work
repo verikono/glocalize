@@ -1,0 +1,8 @@
+go 1.27.0
+
+use (
+	./apps/glo
+	./packages/go/data/prisma
+	./packages/go/puck
+	./types/go
+)
