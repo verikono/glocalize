@@ -1,0 +1,19 @@
+
+model App {
+  name String @id @unique
+  project Project @relation("ProjectApps", fields: [project_id], references: [name])
+  project_id String 
+  styles StyleToken[] @relation("AppStyleTokens")
+  skills AppSkill[] @relation("AppSkills")
+}
+
+model AppSkill {
+  app_id   String
+  skillId  String
+  priority Priority @default(NORMAL)
+
+  app   App   @relation("AppSkills", fields: [app_id], references: [name])
+  skill Skill @relation("SkillApps", fields: [skillId], references: [id])
+
+  @@id([app_id, skillId])
+}

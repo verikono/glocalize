@@ -1,0 +1,41 @@
+
+model Project {
+  name       String @id @unique
+  skillsPath String
+  agentsPath String
+
+  skills      ProjectSkill[]
+  generalizes ProjectSpecialization[] @relation("ProjectGeneralizes")
+  specializes ProjectSpecialization[] @relation("ProjectSpecializes")
+
+  apps    App[]    @relation("ProjectApps")
+  agents  Agent[]  @relation("ProjectAgents")
+}
+
+/*
+seed Project
+- name: all
+  skillsPath: ~/.agents/skills/
+  agentsPath: ~/.agents/agents/
+  skills:
+  - sk_8405ebdc4cde24d9825ea6a5
+*/
+
+model ProjectSkill {
+  projectName String
+  skillId     String
+
+  project Project @relation(fields: [projectName], references: [name])
+  skill   Skill   @relation(fields: [skillId], references: [id])
+  @@id([projectName, skillId])
+}
+
+model ProjectSpecialization {
+  generalizesName String
+  specializesName String
+
+  generalizes Project @relation("ProjectGeneralizes", fields: [generalizesName], references: [name])
+  specializes Project @relation("ProjectSpecializes", fields: [specializesName], references: [name])
+
+  @@id([generalizesName, specializesName])
+}

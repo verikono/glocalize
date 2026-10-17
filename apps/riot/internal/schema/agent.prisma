@@ -1,0 +1,25 @@
+model Agent {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  content      String   @default("")
+  allowedTools String   @map("allowed-tools")
+  metadata     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  trashes  TrashAgent[]
+  skills   AgentSkill[] @relation("AgentSkills")
+  projects Project[]    @relation("ProjectAgents")
+}
+
+model AgentSkill {
+  agentId  String
+  skillId  String
+  priority Priority @default(NORMAL)
+
+  agent Agent @relation("AgentSkills", fields: [agentId], references: [id])
+  skill Skill @relation("SkillAgents", fields: [skillId], references: [id])
+
+  @@id([agentId, skillId])
+}

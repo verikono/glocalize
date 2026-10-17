@@ -1,0 +1,15 @@
+model User {
+    id String @unique @id
+    name String 
+
+    preferred Skill[] @relation("UserSkills")
+    blacklist Skill[] @relation("UserSkillBlacklist")
+}
+
+/*
+seed User
+- id: bren
+  name: bren
+- id: wayne
+  name: wayne
+*/

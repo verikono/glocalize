@@ -1,0 +1,12 @@
+database:
+  url_env: RIOT_DATAURL
+  direct_url_env: RIOT_DIRECT_DATAURL
+
+schema: ./internal/schema/
+client_name: riot
+
+output:
+  client: ./internal/orm
+  migrations: ./internal/orm/migrations
+log:
+- all

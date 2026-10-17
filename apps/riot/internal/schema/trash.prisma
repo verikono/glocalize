@@ -1,0 +1,29 @@
+
+model Trash {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  content   String
+
+  agents TrashAgent[]
+  skills TrashSkill[]
+}
+
+model TrashAgent {
+  trashId Int
+  agentId String
+
+  trash Trash @relation(fields: [trashId], references: [id])
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@id([trashId, agentId])
+}
+
+model TrashSkill {
+  trashId Int
+  skillId String
+
+  trash Trash @relation(fields: [trashId], references: [id])
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@id([trashId, skillId])
+}

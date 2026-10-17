@@ -1,0 +1,44 @@
+model Document {
+  id        String
+  kind      String @default("")
+  body      Bytes
+  updatedAt Int    @map("updated_at")
+
+  @@id([id, kind])
+  @@map("documents")
+}
+
+model Reference {
+  name         String           @unique
+  description  String
+  accessType   URI
+  resourceType ReferenceType
+  content      String?
+
+  skills SkillReference[] @relation("ReferenceSkills")
+}
+
+model SkillReference {
+  skillId       String
+  referenceName String
+
+  skill     Skill     @relation("SkillReferences", fields: [skillId], references: [id])
+  reference Reference @relation("ReferenceSkills", fields: [referenceName], references: [name])
+
+  @@id([skillId, referenceName])
+}
+
+
+enum URI {
+  static
+  url
+}
+
+enum ReferenceType {
+  literature
+  image
+  video
+  commands
+  script
+  configuration
+}

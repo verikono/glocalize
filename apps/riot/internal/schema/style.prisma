@@ -1,0 +1,12 @@
+
+model StyleToken {
+  style String  //kebab-case mapping from the theme object
+  value String
+  mode ThemeMode
+  type StyleType
+  token TokenType
+  app App @relation("AppStyleTokens", fields: [app_id], references: [name])
+  app_id String
+  variable String? // this way the style primary.color translates to --color-primary
+  @@id([app_id, mode, token, style])
+}
