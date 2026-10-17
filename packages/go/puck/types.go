@@ -4,14 +4,18 @@ import (
 	GT "github.com/verikono/glocalize/types/go"
 )
 
+// - TypeAliases - //
 type (
-	OptionerFn = GT.OptionerFn
+	OptionerFn            = GT.OptionerFn
+	AbsoluteFsPath        = string
+	AbsoluteFilePath      = AbsoluteFsPath
+	AbsoluteDirectoryPath = AbsoluteFsPath
+	GlobPattern           = string
+	UTF8FileContent       = string
+	Url                   = GT.Url
 )
 
+// - Interfaces - //
 type (
-	IPuck interface {
-		Protocol() UrlProtocol
-		Path() string
-		Format() DataFormat
-	}
+	IPuck = GT.IPuck
 )

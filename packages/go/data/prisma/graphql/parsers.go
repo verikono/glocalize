@@ -9,6 +9,7 @@ import (
 
 // ParsePrisma converts a Prisma schema document into a GraphQL schema document.
 func ParsePrisma(schema GT.PrismaSchema) (*GT.GraphQLSchema, error) {
+
 	models, err := extractModels(schema)
 	if err != nil {
 		return nil, err
@@ -16,20 +17,20 @@ func ParsePrisma(schema GT.PrismaSchema) (*GT.GraphQLSchema, error) {
 	enums := extractEnums(schema)
 
 	ctx := parserContext{models: models, enums: enums}
-
 	parsedEnums := parseEnums(ctx)
 	parsedModels, err := parseModels(ctx)
 	if err != nil {
 		return nil, err
 	}
-	parsedScalars := parseScalars()
 
+	parsedScalars := parseScalars()
 	parts := make([]string, 0, len(parsedScalars)+len(parsedEnums)+len(parsedModels))
 	parts = append(parts, parsedScalars...)
 	parts = append(parts, parsedEnums...)
 	parts = append(parts, parsedModels...)
 
 	out := strings.Join(parts, "\n\n")
+
 	return &out, nil
 }
 

@@ -33,7 +33,6 @@ func NewApp() *cli.Command {
 	}
 }
 
-// showVersion prints the launch name and version to the CLI.
 func showVersion() {
 	fmt.Printf("glock\nversion: %s\n", Version)
 }

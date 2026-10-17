@@ -4,25 +4,33 @@ import (
 	"strings"
 )
 
-// "strings"
-
-func From(url string) IPuck {
-	return NewPuck(from(url))
+func From(pattern string) IPuck {
+	return NewPuck(from(pattern))
 }
 
-func from(url string) OptionerFn {
+func from(pattern string) OptionerFn {
 	return func(args ...any) error {
 		for _, a := range args {
 			puck, ok := a.(*Puck)
 			if ok {
-				if strings.HasPrefix(url, "/") {
-					url = "file://" + url
+				if isPathPattern(pattern) {
+					puck.url = "file://" + pattern
+					puck.protocol = ProtocolFile
+					if isGlobPattern((pattern)) {
+						puck.glob = pattern
+					}
 				}
-				puck.url = url
-				puck.protocol = puck.Protocol()
-				puck.format = puck.Format()
+				// deprecated -- NewPuck will call this: puck.assertValidFormat()
 			}
 		}
 		return nil
 	}
+}
+
+func isPathPattern(value string) bool {
+	return strings.HasPrefix(value, "/")
+}
+
+func isGlobPattern(value string) bool {
+	return strings.Contains(value, "*")
 }

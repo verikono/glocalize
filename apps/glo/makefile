@@ -7,3 +7,6 @@ compile:
 install:
 	make compile
 	cp ./dist/glo ~/.local/bin/glock
+
+test:
+	go test ./cmd/parse_test.go

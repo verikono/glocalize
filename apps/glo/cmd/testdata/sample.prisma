@@ -1,0 +1,18 @@
+generator client {
+  provider     = "prisma-client-js"
+  engineType   = "binary"
+  moduleFormat = "esm"
+}
+
+model User {
+  id         Int    @id @default(autoincrement())
+  first_name String
+  last_name  String
+  groups     Group[] @relation("user_groups")
+}
+
+model Group {
+  id    Int    @id @default(autoincrement())
+  name  String
+  users User[] @relation("user_groups") /// parse:ARGUE[first_name!:string,last_name:string]
+}
