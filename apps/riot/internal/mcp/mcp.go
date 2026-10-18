@@ -84,6 +84,7 @@ func (m *RiotMcp) registerTools() {
 	m.server.AddTool(addSkill, m.onAddSkill)
 	m.server.AddTool(updateSkill, m.onUpdateSkill)
 	m.server.AddTool(deleteSkill, m.onDeleteSkill)
+	m.server.AddTool(mutateSkill, m.onMutateSkill)
 	m.server.AddTool(createAgent, m.onCreateAgent)
 	m.server.AddTool(updateAgent, m.onUpdateAgent)
 	m.server.AddTool(deleteAgent, m.onDeleteAgent)

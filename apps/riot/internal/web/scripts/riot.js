@@ -59,7 +59,7 @@ const fSkillFields = `fragment SkillFields on Skill {
 // query: graphql query, rest are cbo: { el: <element>, fn: callback function }
 const LoadSkills = async (props = {}, ...cbo) => {
     // do stuff with props soon, not now.
-    const { data, error: err } = await query(`{ Skills { id, name, description, url, dependencies { ...SkillFields } } } ${fSkillFields}`, props)
+    const { data, error: err } = await query(`{ Skills { id, name, description, url, keywords, dependencies { ...SkillFields } } } ${fSkillFields}`, props)
     if (err) {
         console.error("LoadSkills: failed getting data", err);
         for (const { el, fn } of cbo) {
@@ -302,7 +302,7 @@ const wireResizer = () => {
 const selectSkill = async (name, options = {}) => {
     const { push = true } = options;
     const { data, error: err } = await query(
-        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content dependencies { id name } } }`,
+        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content keywords dependencies { id name } } }`,
         { variables: { name } },
     );
     if (err || !data || !data.Skill) {
@@ -334,6 +334,7 @@ const cloneSkill = (skill) => ({
     description: skill.description || "",
     url: skill.url || "",
     content: skill.content || "",
+    keywords: skill.keywords || "",
     dependencies: (skill.dependencies || []).map(dep => dep.id),
 });
 
@@ -417,6 +418,8 @@ const fillForm = (skill) => {
     document.querySelector("#skill-description").value = skill.description;
     document.querySelector("#skill-url").value = skill.url;
     document.querySelector("#skill-content").value = skill.content;
+    const keywords = document.querySelector("#skill-keywords");
+    if (keywords) keywords.value = skill.keywords || "";
     renderDependencyOptions(skill.dependencies || []);
 }
 
@@ -487,6 +490,8 @@ const saveSkill = async () => {
     const description = document.querySelector("#skill-description").value.trim();
     const url = document.querySelector("#skill-url").value.trim();
     const content = document.querySelector("#skill-content").value;
+    const keywordsEl = document.querySelector("#skill-keywords");
+    const keywords = keywordsEl ? keywordsEl.value.trim() : "";
 
     if (!name || !description || !url) {
         setStatus("name, description and url are required", true);
@@ -499,12 +504,13 @@ const saveSkill = async () => {
         description,
         url,
         content,
+        keywords,
         dependencies: selectedDependencies(),
     };
 
     setStatus("saving…");
     const { data, error: err } = await query(
-        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content dependencies { id name } } }`,
+        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content keywords dependencies { id name } } }`,
         { variables: { input } },
     );
     if (err || !data || !data.SaveSkill) {
@@ -533,7 +539,7 @@ const saveSkill = async () => {
 // save does not truncate the tree to one level.
 const refreshTree = async () => {
     const { data, error: err } = await query(
-        `{ Skills { id, name, description, url, dependencies { ...SkillFields } } } ${fSkillFields}`,
+        `{ Skills { id, name, description, url, keywords, dependencies { ...SkillFields } } } ${fSkillFields}`,
     );
     if (err || !data) return;
 
@@ -639,6 +645,7 @@ const buildSkillHierarchy = (data, search = "") => {
             name: skill.name,
             description: skill.description || "",
             url: skill.url || "",
+            keywords: skill.keywords || "",
             children: [],
         };
         for (const dep of skill.dependencies || []) {
@@ -650,9 +657,14 @@ const buildSkillHierarchy = (data, search = "") => {
 
     const root = { id: "__root__", name: "skills", description: "", url: "", children: [] };
 
-    // the roots are the whole catalogue, or just the search matches.
+    // the roots are the whole catalogue, or just the search matches. A skill
+    // matches on its name or on any of its keywords.
+    const matches = (skill) => {
+        const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
+        return haystack.includes(term);
+    };
     const roots = term
-        ? skills.filter(skill => String(skill.name || "").toLowerCase().includes(term))
+        ? skills.filter(matches)
         : skills;
 
     for (const skill of roots) {

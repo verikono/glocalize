@@ -2,6 +2,7 @@ package gql
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/graphql-go/graphql"
@@ -44,6 +45,13 @@ func eq[M any, T any](column string, value T) orm.Predicate[M] {
 	return orm.Field[M, T]{Column: column}.EQ(value)
 }
 
+// unique builds a unique-field predicate, used by Update and Delete.
+func unique[M any](column string, value any) orm.UniquePredicate[M] {
+	return orm.UniquePredicate[M]{
+		Data: orm.PredicateData{Column: column, Operator: "=", Value: value},
+	}
+}
+
 // buildSchema assembles the executable read-only schema. Object types are built
 // locally so relation resolvers can close over the resolver instance.
 func buildSchema(db *orm.DB) (graphql.Schema, error) {
@@ -57,10 +65,16 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 			"description": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"url":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"content":     &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"keywords":    &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"createdAt":   &graphql.Field{Type: dateTimeScalar},
 			"updatedAt":   &graphql.Field{Type: dateTimeScalar},
 		},
 	})
+
+	// Attach the self-referential dependency relations once both types exist.
+	// These bridge through the SkillDependency join table and return Skills.
+	skillType.AddFieldConfig("dependencies", &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.skillDependencies})
+	skillType.AddFieldConfig("dependents", &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.skillDependents})
 
 	styleTokenType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "StyleToken",
@@ -212,7 +226,33 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 		},
 	})
 
-	return graphql.NewSchema(graphql.SchemaConfig{Query: query})
+	skillInputType := graphql.NewInputObject(graphql.InputObjectConfig{
+		Name: "SkillInput",
+		Fields: graphql.InputObjectConfigFieldMap{
+			"id":           &graphql.InputObjectFieldConfig{Type: graphql.String},
+			"name":         &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"description":  &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"url":          &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"content":      &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"keywords":     &graphql.InputObjectFieldConfig{Type: graphql.String},
+			"dependencies": &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+		},
+	})
+
+	mutation := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Mutation",
+		Fields: graphql.Fields{
+			"SaveSkill": &graphql.Field{
+				Type: skillType,
+				Args: graphql.FieldConfigArgument{
+					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(skillInputType)},
+				},
+				Resolve: r.saveSkill,
+			},
+		},
+	})
+
+	return graphql.NewSchema(graphql.SchemaConfig{Query: query, Mutation: mutation})
 }
 
 // Entrypoint resolvers.
@@ -255,6 +295,81 @@ func (r *resolver) skill(p graphql.ResolveParams) (interface{}, error) {
 
 func (r *resolver) skills(p graphql.ResolveParams) (interface{}, error) {
 	return r.db.Skill.FindMany().Exec(r.ctx(p))
+}
+
+// saveSkill creates or updates a skill and replaces its dependency set. The
+// whole write runs in one transaction so a failure part-way through cannot
+// leave a skill with half of its dependencies attached.
+func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
+	input, ok := p.Args["input"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("SaveSkill: input is required")
+	}
+
+	name, _ := input["name"].(string)
+	description, _ := input["description"].(string)
+	url, _ := input["url"].(string)
+	content, _ := input["content"].(string)
+	keywords, _ := input["keywords"].(string)
+	id, _ := input["id"].(string)
+
+	dependencyIDs := make([]string, 0)
+	if raw, ok := input["dependencies"].([]interface{}); ok {
+		for _, item := range raw {
+			if dep, ok := item.(string); ok && dep != "" {
+				dependencyIDs = append(dependencyIDs, dep)
+			}
+		}
+	}
+
+	ctx := r.ctx(p)
+
+	var saved *orm.Skill
+	err := r.db.Transaction(ctx, func(tx *orm.Tx) error {
+		var err error
+		if id == "" {
+			saved, err = tx.Skill.Create().
+				SetName(name).
+				SetDescription(description).
+				SetUrl(url).
+				SetContent(content).
+				SetKeywords(keywords).
+				Exec(ctx)
+		} else {
+			saved, err = tx.Skill.Update(unique[orm.Skill]("id", id)).
+				SetName(name).
+				SetDescription(description).
+				SetUrl(url).
+				SetContent(content).
+				SetKeywords(keywords).
+				Exec(ctx)
+		}
+		if err != nil {
+			return err
+		}
+
+		// replace the dependency set: detach everything, then attach what was
+		// asked for. A skill may not depend on itself.
+		if _, err := tx.SkillDependency.DeleteMany(eq[orm.SkillDependency, string]("dependentId", saved.Id)).Exec(ctx); err != nil {
+			return err
+		}
+		for _, dependencyID := range dependencyIDs {
+			if dependencyID == saved.Id {
+				continue
+			}
+			if _, err := tx.SkillDependency.Create().
+				SetDependentId(saved.Id).
+				SetDependencyId(dependencyID).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return saved, nil
 }
 
 func (r *resolver) user(p graphql.ResolveParams) (interface{}, error) {
@@ -371,6 +486,42 @@ func (r *resolver) userBlacklist(p graphql.ResolveParams) (interface{}, error) {
 	ids, err := r.joinColumnValues(p, "_UserSkillBlacklist", "userId", user.Id, "skillId")
 	if err != nil {
 		return nil, err
+	}
+	return r.skillsByIDs(p, ids)
+}
+
+// skillDependencies returns the skills this skill depends on, bridged through
+// the SkillDependency join table (rows where this skill is the dependent).
+func (r *resolver) skillDependencies(p graphql.ResolveParams) (interface{}, error) {
+	skill, ok := p.Source.(*orm.Skill)
+	if !ok || skill == nil {
+		return []*orm.Skill{}, nil
+	}
+	rows, err := r.db.SkillDependency.FindMany(eq[orm.SkillDependency, string]("dependentId", skill.Id)).Exec(r.ctx(p))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.DependencyId)
+	}
+	return r.skillsByIDs(p, ids)
+}
+
+// skillDependents returns the skills that depend on this skill, bridged through
+// the SkillDependency join table (rows where this skill is the dependency).
+func (r *resolver) skillDependents(p graphql.ResolveParams) (interface{}, error) {
+	skill, ok := p.Source.(*orm.Skill)
+	if !ok || skill == nil {
+		return []*orm.Skill{}, nil
+	}
+	rows, err := r.db.SkillDependency.FindMany(eq[orm.SkillDependency, string]("dependencyId", skill.Id)).Exec(r.ctx(p))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.DependentId)
 	}
 	return r.skillsByIDs(p, ids)
 }

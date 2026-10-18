@@ -1012,6 +1012,7 @@ type Queries struct {
 	//   description string    required
 	//   url         string    required
 	//   content     string    required
+	//   keywords    string    default:
 	//   createdAt   time.Time default: now()
 	//   updatedAt   time.Time required
 	Skill *SkillDelegate

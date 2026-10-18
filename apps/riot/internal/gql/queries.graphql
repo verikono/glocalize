@@ -1,0 +1,37 @@
+# Queries served by the riot graph at /graph.
+#
+# The executable schema is assembled in schema.go; this document is the
+# contract it implements and is embedded into the binary by gql.go.
+
+# Skills is the whole catalogue, with each skill's direct dependencies. The
+# browser client uses it to draw the radial tree.
+query Skills {
+	Skills {
+		id
+		name
+		description
+		url
+		keywords
+		dependencies {
+			id
+			name
+		}
+	}
+}
+
+# SkillByName loads one skill in full, including its body and its direct
+# dependencies. The chooser uses it when a node is selected.
+query SkillByName($name: String!) {
+	Skill(name: $name) {
+		id
+		name
+		description
+		url
+		content
+		keywords
+		dependencies {
+			id
+			name
+		}
+	}
+}

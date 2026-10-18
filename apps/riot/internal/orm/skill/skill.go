@@ -47,6 +47,8 @@ var Url = riot.StringUniqueField[riot.Skill]{Column: "url"}
 
 var Content = riot.StringField[riot.Skill]{Column: "content"}
 
+var Keywords = riot.StringField[riot.Skill]{Column: "keywords"}
+
 var CreatedAt = riot.Field[riot.Skill, time.Time]{Column: "createdAt"}
 
 var UpdatedAt = riot.Field[riot.Skill, time.Time]{Column: "updatedAt"}

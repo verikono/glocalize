@@ -5,10 +5,11 @@ model Skill {
   description String
   url         String   @unique
   content     String
+  keywords    String   @default("") /// searchable keyword string for the skill
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  dependencies SkillDependency[] @relation("SkillDependencies")
+  dependencies SkillDependency[] @relation("SkillDependencies") /// parse:ARGUE[id:String]
   dependents   SkillDependency[] @relation("SkillDependents")
   projects     ProjectSkill[]
   references   SkillReference[]  @relation("SkillReferences")

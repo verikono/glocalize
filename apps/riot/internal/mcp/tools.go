@@ -28,6 +28,9 @@ const (
 	UpdateSkillToolName = "update-skill"
 	// DeleteSkillToolName deletes a skill.
 	DeleteSkillToolName = "delete-skill"
+	// MutateSkillToolName creates, updates or deletes a skill and its
+	// dependency/dependent associations in one call.
+	MutateSkillToolName = "mutate-skill"
 	// CreateAgentToolName creates an agent.
 	CreateAgentToolName = "create-agent"
 	// UpdateAgentToolName updates an agent.
@@ -90,6 +93,7 @@ var addSkill = mcp.NewTool(
 	mcp.WithString("name", mcp.Required(), mcp.Description("The skill's name, unique within the project, e.g. \"font-acquisition\".")),
 	mcp.WithString("description", mcp.Required(), mcp.Description("A one-line summary of what the skill does.")),
 	mcp.WithString("content", mcp.Required(), mcp.Description("The skill BODY in Markdown: frontmatter removed, newlines left unescaped.")),
+	mcp.WithString("keywords", mcp.Description("Optional searchable keyword string for the skill, e.g. \"zustand state react store\".")),
 	mcp.WithString("url", mcp.Description("Optional source url. When omitted a sandbox url skill://<project>/<name> is synthesized.")),
 )
 
@@ -100,6 +104,7 @@ var updateSkill = mcp.NewTool(
 	mcp.WithString("name", mcp.Required(), mcp.Description("The name of the skill to update, as it exists in the project.")),
 	mcp.WithString("description", mcp.Description("A new one-line summary. Omit to leave unchanged.")),
 	mcp.WithString("content", mcp.Description("A new body. Omit to leave unchanged.")),
+	mcp.WithString("keywords", mcp.Description("A new searchable keyword string. Omit to leave unchanged.")),
 	mcp.WithString("url", mcp.Description("A new source url. Omit to leave unchanged.")),
 )
 
@@ -108,6 +113,57 @@ var deleteSkill = mcp.NewTool(
 	mcp.WithDescription("Delete a skill from a project. A name matching no skill is reported as an error result."),
 	mcp.WithString("project", mcp.Required(), mcp.Description("The project that owns the skill.")),
 	mcp.WithString("name", mcp.Required(), mcp.Description("The name of the skill to delete, as it exists in the project.")),
+)
+
+// associationMutationSchema is the JSON schema for one side of a skill's
+// associations (dependencies or dependents).
+func associationMutationSchema() map[string]any {
+	return map[string]any{
+		"type":        "object",
+		"description": "Add, remove or replace one side of a skill's associations. Each key is a skill id or name.",
+		"properties": map[string]any{
+			"add": map[string]any{
+				"type":        "array",
+				"description": "Association keys to add. Each key is a skill id or name.",
+				"items":       map[string]any{"type": "string"},
+			},
+			"remove": map[string]any{
+				"type":        "array",
+				"description": "Association keys to remove. Each key is a skill id or name.",
+				"items":       map[string]any{"type": "string"},
+			},
+			"replace": map[string]any{
+				"type":        "boolean",
+				"description": "When true the add/remove arrays are treated as the COMPLETE association set: every association not listed in `add` is voided first. Defaults to false.",
+			},
+		},
+	}
+}
+
+var mutateSkill = mcp.NewTool(
+	MutateSkillToolName,
+	mcp.WithDescription("Create, update or delete a skill and its relationships (dependencies, dependents) in one call. The target skill is identified by `id` or `name` — one of them is mandatory so the subject can be pulled back (for `op: \"create\"` the name is the new skill's name). `mutation.op` selects the operation: `create` makes a new skill from `mutation.data`, `update` patches the fields present in `mutation.data`, `delete` removes the skill and every association pointing at it. `mutation.dependencies` are the skills this skill relies on; `mutation.dependents` are the skills that rely on this one. Each side accepts `add` and `remove` arrays of skill ids or names, plus `replace: true` to treat `add` as the complete set (everything else is voided). The whole mutation runs in one transaction."),
+	mcp.WithString("id", mcp.Description("The target skill's id. Provide this or `name`.")),
+	mcp.WithString("name", mcp.Description("The target skill's name. Provide this or `id`.")),
+	mcp.WithObject("mutation", mcp.Required(),
+		mcp.Description("The mutation to apply to the target skill."),
+		mcp.Properties(map[string]any{
+			"id":   map[string]any{"type": "string", "description": "The target skill's id (alternative to the top-level id)."},
+			"name": map[string]any{"type": "string", "description": "The target skill's name (alternative to the top-level name)."},
+			"op": map[string]any{
+				"type":        "string",
+				"enum":        []string{"create", "update", "delete"},
+				"description": "The operation: create, update or delete.",
+			},
+			"data": map[string]any{
+				"type":                 "object",
+				"description":          "Key/value pairs of the skill fields being written: name, description, url, content, keywords.",
+				"additionalProperties": true,
+			},
+			"dependencies": associationMutationSchema(),
+			"dependents":   associationMutationSchema(),
+		}),
+	),
 )
 
 var createAgent = mcp.NewTool(

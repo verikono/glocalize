@@ -1,0 +1,25 @@
+<form id="skill-form" class="skill-form" autocomplete="off" novalidate>
+    <div class="skill-row skill-row-top">
+        <input id="skill-name" class="skill-field skill-name" type="text" placeholder="name" spellcheck="false" />
+        <div id="skill-dependencies" class="multiselect">
+            <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                <span class="multiselect-label">MultiSelect &lt;Dependencies&gt;</span>
+            </button>
+            <div class="multiselect-menu" role="listbox" aria-multiselectable="true"></div>
+        </div>
+        <button type="button" id="skill-new" class="skill-square" title="new skill depending on this one" aria-label="new skill depending on this one">+</button>
+    </div>
+    <div class="skill-row">
+        <input id="skill-description" class="skill-field" type="text" placeholder="description" spellcheck="false" />
+        <input id="skill-url" class="skill-field" type="text" placeholder="url" spellcheck="false" />
+    </div>
+    <div class="skill-row">
+        <input id="skill-keywords" class="skill-field" type="text" placeholder="keywords (space separated, searchable)" spellcheck="false" />
+    </div>
+    <textarea id="skill-content" class="skill-content" placeholder="Content" spellcheck="false"></textarea>
+    <div class="skill-row skill-actions">
+        <span class="skill-status" role="status"></span>
+        <button type="button" id="skill-revert" class="skill-button">Revert</button>
+        <button type="submit" id="skill-save" class="skill-button skill-save">Save</button>
+    </div>
+</form>

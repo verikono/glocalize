@@ -1,0 +1,24 @@
+# Mutations served by the riot graph at /graph.
+#
+# The executable schema is assembled in schema.go; this document is the
+# contract it implements and is embedded into the binary by gql.go.
+
+# SkillInput is the write shape for a skill. `id` is omitted (or null) when a
+# new skill is being created; when present the record is updated in place.
+# `dependencies` REPLACES the skill's dependency set: every id listed becomes a
+# dependency of this skill, and every id not listed is detached.
+input SkillInput {
+	id: String
+	name: String!
+	description: String!
+	url: String!
+	content: String!
+	keywords: String
+	dependencies: [String!]
+}
+
+type Mutation {
+	# SaveSkill creates or updates a skill and replaces its dependency set.
+	# Returns the stored record, including its resolved dependencies.
+	SaveSkill(input: SkillInput!): Skill!
+}
