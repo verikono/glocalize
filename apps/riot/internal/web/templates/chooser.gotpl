@@ -1,4 +1,5 @@
 <form id="skill-form" class="skill-form" autocomplete="off" novalidate>
+    <div id="skill-title" class="skill-title"></div>
     <div class="skill-row skill-row-top">
         <input id="skill-name" class="skill-field skill-name" type="text" placeholder="name" spellcheck="false" />
         <div id="skill-dependencies" class="multiselect">
@@ -19,7 +20,34 @@
     <div class="skill-row">
         <input id="skill-keywords" class="skill-field" type="text" placeholder="keywords (space separated, searchable)" spellcheck="false" />
     </div>
-    <textarea id="skill-content" class="skill-content" placeholder="Content" spellcheck="false"></textarea>
+    <textarea id="skill-content" class="skill-content" spellcheck="false" placeholder="# &lt;skill-name&gt;
+
+&lt;One sentence: what this skill lets an agent do.&gt;
+
+## when to load
+
+- &lt;trigger phrase a user would actually type&gt;
+- &lt;trigger phrase&gt;
+- &lt;trigger phrase&gt;
+
+## dependencies
+
+- `&lt;project&gt;/&lt;skill-name&gt;` — owns &lt;ground&gt;. This skill assumes it and does not re-teach it.
+  `get-skill(project: &quot;&lt;project&gt;&quot;, name: &quot;&lt;skill-name&gt;&quot;)`
+- none — this skill stands alone.
+
+## procedure
+
+1. **&lt;verb-first step&gt;** — &lt;what to do, and why it matters&gt;.
+2. **&lt;verb-first step&gt;** — &lt;what to do&gt;.
+3. **&lt;verb-first step&gt;** — &lt;what to do&gt;.
+
+## checklist — done when
+
+- [ ] &lt;observable result the reader can verify&gt;
+- [ ] &lt;observable result&gt;
+- [ ] &lt;observable result&gt;
+"></textarea>
     <div class="skill-row skill-actions">
         <span class="skill-status" role="status"></span>
         <button type="button" id="skill-revert" class="skill-button">Revert</button>

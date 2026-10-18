@@ -113,7 +113,16 @@ const chooserState = {
     selected: new Set(),
     // the current filter string of the dependency multiselect.
     filter: "",
+    // the raw ?dependency= value a create state was opened with. It is kept
+    // until the catalogue has loaded, so an id or a name can both be resolved.
+    pendingDependency: "",
 };
+
+// pillarHover tracks the focused-pillar row the pointer is over, so a ctrl
+// keydown can drop a create button beside that skill. ctrlHeld mirrors the
+// modifier so hovering a row while ctrl is already down shows the button too.
+const pillarHover = { skill: null, row: null, button: null };
+let ctrlHeld = false;
 
 // view state: the last catalogue payload, the hierarchy currently drawn (which
 // the search narrows), the active viewstack entry, and the search string.
@@ -174,7 +183,14 @@ const main = async (loaded,) => {
     wireNavigation();
     wireResizer();
     wireViewstack();
+    wirePillarCreate();
     observeStageResize();
+
+    // ?method=create opens the chooser in its creation state, optionally with
+    // a dependency preselected from ?dependency=.
+    if (String(params.get("method") || "").trim().toLowerCase() === "create") {
+        enterCreateState(params.get("dependency") || "");
+    }
 
     await LoadSkills({}, { el: stage, fn: onLoadedSkills });
 
@@ -190,6 +206,12 @@ const main = async (loaded,) => {
 const renderActiveView = () => {
     const stage = document.querySelector("#charted_data");
     if (!stage || !viewState.tree) return;
+
+    // a redraw replaces the stage's children, so any floating create button
+    // and the row it belonged to are gone.
+    hidePillarCreate();
+    pillarHover.skill = null;
+    pillarHover.row = null;
 
     const render = viewRenderer(viewState.view);
     render(stage, viewState.tree);
@@ -319,6 +341,119 @@ const wireResizer = () => {
     });
 }
 
+// hidePillarCreate removes the floating create button, if one is showing.
+const hidePillarCreate = () => {
+    if (pillarHover.button && pillarHover.button.parentNode) {
+        pillarHover.button.parentNode.removeChild(pillarHover.button);
+    }
+    pillarHover.button = null;
+}
+
+// showPillarCreate places a circular + button just to the right of the skill
+// name in the hovered focused-pillar row. Clicking it opens the chooser in its
+// creation state with that skill preselected as a dependency.
+const showPillarCreate = () => {
+    const stage = document.querySelector("#charted_data");
+    const skill = pillarHover.skill;
+    if (!stage || !skill || !pillarHover.row) return;
+    if (pillarHover.button) return;
+
+    const name = pillarHover.row.querySelector(".pillar-name");
+    if (!name) return;
+
+    const stageBox = stage.getBoundingClientRect();
+    const nameBox = name.getBoundingClientRect();
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pillar-create";
+    button.textContent = "+";
+    button.title = `new skill depending on ${skill.name}`;
+    button.setAttribute("aria-label", `new skill depending on ${skill.name}`);
+
+    // the button rides the right edge of the name, vertically centred on it.
+    button.style.left = `${nameBox.right - stageBox.left + 8}px`;
+    button.style.top = `${nameBox.top - stageBox.top + nameBox.height / 2}px`;
+
+    button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        hidePillarCreate();
+        enterCreateState(skill.id);
+    });
+
+    stage.appendChild(button);
+    pillarHover.button = button;
+}
+
+// wirePillarCreate tracks which focused-pillar row the pointer is over and
+// shows the create button while ctrl is held. The button is an html overlay
+// rather than an svg node, so it keeps a constant screen size at any zoom.
+const wirePillarCreate = () => {
+    const stage = document.querySelector("#charted_data");
+    if (!stage) return;
+
+    stage.addEventListener("mouseover", (event) => {
+        const row = event.target.closest ? event.target.closest(".pillar-row") : null;
+        if (!row) return;
+        const skill = row.__skill;
+        if (!skill) return;
+
+        // a different row means the old button no longer belongs here.
+        if (pillarHover.row && pillarHover.row !== row) hidePillarCreate();
+
+        pillarHover.skill = skill;
+        pillarHover.row = row;
+        if (ctrlHeld) showPillarCreate();
+    });
+
+    stage.addEventListener("mouseout", (event) => {
+        const row = event.target.closest ? event.target.closest(".pillar-row") : null;
+
+        // leaving the create button itself: keep it only while the pointer
+        // moves back onto the row it belongs to.
+        if (pillarHover.button && event.target === pillarHover.button) {
+            if (event.relatedTarget === pillarHover.row) return;
+            pillarHover.skill = null;
+            pillarHover.row = null;
+            hidePillarCreate();
+            return;
+        }
+
+        if (!row) return;
+
+        // moving onto the create button itself must not dismiss it.
+        if (pillarHover.button && event.relatedTarget === pillarHover.button) return;
+
+        // moving between nodes inside the same row must not drop the button.
+        const next = event.relatedTarget && event.relatedTarget.closest
+            ? event.relatedTarget.closest(".pillar-row")
+            : null;
+        if (next === row) return;
+
+        pillarHover.skill = null;
+        pillarHover.row = null;
+        hidePillarCreate();
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Control") return;
+        ctrlHeld = true;
+        if (pillarHover.skill) showPillarCreate();
+    });
+
+    document.addEventListener("keyup", (event) => {
+        if (event.key !== "Control") return;
+        ctrlHeld = false;
+        hidePillarCreate();
+    });
+
+    // a lost focus (alt-tab, another window) never delivers the keyup.
+    window.addEventListener("blur", () => {
+        ctrlHeld = false;
+        hidePillarCreate();
+    });
+}
+
 // selectSkill loads one skill into the chooser and reflects it in the url, so
 // the current selection survives a reload and can be linked to.
 const selectSkill = async (name, options = {}) => {
@@ -334,9 +469,13 @@ const selectSkill = async (name, options = {}) => {
 
     chooserState.loaded = cloneSkill(data.Skill);
     chooserState.isNew = false;
+    chooserState.pendingDependency = "";
     fillForm(chooserState.loaded);
 
     const url = new URL(window.location.href);
+    // selecting a skill leaves any create state behind.
+    url.searchParams.delete("method");
+    url.searchParams.delete("dependency");
     url.searchParams.set("subject", name);
     url.searchParams.set("class", "skill");
     if (push) {
@@ -410,24 +549,30 @@ const wireChooser = () => {
     document.querySelector("#skill-new").addEventListener("click", () => {
         // a new skill that depends on the one currently loaded.
         const parent = chooserState.loaded;
-        chooserState.isNew = true;
-        fillForm({
-            id: "",
-            name: "",
-            description: "",
-            url: "",
-            content: "",
-            dependencies: parent && parent.id ? [parent.id] : [],
-        });
-        setStatus(parent ? `new skill depending on ${parent.name}` : "new skill");
-        document.querySelector("#skill-name").focus();
+        enterCreateState(parent && parent.id ? parent.id : "");
     });
 
     document.querySelector("#skill-revert").addEventListener("click", () => {
+        // in the creation state the button is Cancel: it drops the create
+        // params and reloads, leaving the page as it was before.
+        if (chooserState.isNew) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("method");
+            url.searchParams.delete("dependency");
+            window.location.replace(url.toString());
+            return;
+        }
         if (!chooserState.loaded) return;
-        chooserState.isNew = false;
         fillForm(chooserState.loaded);
         setStatus("reverted");
+    });
+
+    // the title follows the name field while a skill is being updated, so it
+    // always names the record the form is about to write.
+    document.querySelector("#skill-name").addEventListener("input", (event) => {
+        if (chooserState.isNew) return;
+        const title = document.querySelector("#skill-title");
+        if (title) title.textContent = `Update ${event.target.value.trim()}`.trim();
     });
 
     form.addEventListener("submit", async (event) => {
@@ -448,6 +593,11 @@ const wireChooser = () => {
             renderActiveView();
         }
 
+        if (String(params.get("method") || "").trim().toLowerCase() === "create") {
+            enterCreateState(params.get("dependency") || "");
+            return;
+        }
+
         const subject = params.get("subject");
         if (subject && params.get("class") === "skill") {
             selectSkill(subject, { push: false });
@@ -455,8 +605,58 @@ const wireChooser = () => {
     });
 }
 
+// enterCreateState empties the form and puts the chooser into its creation
+// state: Save becomes a create call and Revert becomes Cancel. A dependency
+// (an id or a name) is checked in the multiselect when one is supplied.
+const enterCreateState = (dependency = "") => {
+    chooserState.isNew = true;
+    chooserState.loaded = null;
+    chooserState.pendingDependency = String(dependency || "").trim();
+
+    // the create state is linkable: ?method=create carries it, and
+    // ?dependency= names the skill the new one should depend on.
+    const url = new URL(window.location.href);
+    url.searchParams.set("method", "create");
+    if (chooserState.pendingDependency) url.searchParams.set("dependency", chooserState.pendingDependency);
+    else url.searchParams.delete("dependency");
+    window.history.replaceState(window.history.state, "", url.toString());
+
+    // the dependency is only checked once it is known to be a real skill; an
+    // unresolved value (a name, or a catalogue that has not loaded yet) is
+    // kept in pendingDependency and resolved when the catalogue arrives.
+    const known = chooserState.skills.find(skill =>
+        skill.id === chooserState.pendingDependency || skill.name === chooserState.pendingDependency);
+    const id = known ? known.id : "";
+
+    fillForm({
+        id: "",
+        name: "",
+        description: "",
+        url: "",
+        content: "",
+        keywords: "",
+        dependencies: id ? [id] : [],
+    });
+
+    setStatus(known ? `new skill depending on ${known.name}` : "new skill");
+    document.querySelector("#skill-name").focus();
+}
+
 // fillForm writes a skill into the form and rebuilds the dependency options.
 const fillForm = (skill) => {
+    // the title names what the form is doing: updating a skill, or creating one.
+    const title = document.querySelector("#skill-title");
+    if (title) {
+        title.textContent = chooserState.isNew
+            ? "New skill"
+            : `Update ${skill.name || ""}`.trim();
+    }
+
+    // Revert only makes sense when there is a loaded snapshot to go back to;
+    // in the creation state the same button cancels the create.
+    const revert = document.querySelector("#skill-revert");
+    if (revert) revert.textContent = chooserState.isNew ? "Cancel" : "Revert";
+
     document.querySelector("#skill-name").value = skill.name;
     document.querySelector("#skill-description").value = skill.description;
     document.querySelector("#skill-url").value = skill.url;
@@ -545,8 +745,8 @@ const saveSkill = async () => {
     const keywordsEl = document.querySelector("#skill-keywords");
     const keywords = keywordsEl ? keywordsEl.value.trim() : "";
 
-    if (!name || !description || !url) {
-        setStatus("name, description and url are required", true);
+    if (!name || !description) {
+        setStatus("name and description are required", true);
         return;
     }
 
@@ -573,32 +773,17 @@ const saveSkill = async () => {
 
     chooserState.loaded = cloneSkill(data.SaveSkill);
     chooserState.isNew = false;
-    fillForm(chooserState.loaded);
     setStatus("saved");
 
-    // the saved record is now the subject, so a reload reopens it.
+    // the saved record is now the subject, so the reload reopens it. The
+    // create params are dropped first, or the reload would reopen the form in
+    // its creation state.
     const savedUrl = new URL(window.location.href);
+    savedUrl.searchParams.delete("method");
+    savedUrl.searchParams.delete("dependency");
     savedUrl.searchParams.set("subject", chooserState.loaded.name);
     savedUrl.searchParams.set("class", "skill");
-    window.history.replaceState({ subject: chooserState.loaded.name }, "", savedUrl.toString());
-
-    await refreshTree();
-    markActiveSkill(document.querySelector("#main"), chooserState.loaded.name);
-}
-
-// refreshTree reloads the catalogue and redraws the active view in place. It
-// asks for the same recursive dependency fragment as the initial load, so a
-// save does not truncate the tree to one level.
-const refreshTree = async () => {
-    const { data, error: err } = await query(
-        `{ Skills { id, name, description, url, keywords, dependencies { ...SkillFields } } } ${fSkillFields}`,
-    );
-    if (err || !data) return;
-
-    viewState.data = data;
-    chooserState.skills = data.Skills || [];
-    viewState.tree = buildSkillHierarchy(data, viewState.search);
-    renderActiveView();
+    window.location.replace(savedUrl.toString());
 }
 
 // markActiveSkill highlights the node for the selected skill. The node's bound
@@ -660,6 +845,19 @@ const onLoadedSkills = (el, data, err) => {
 
     // the chooser's multiselect offers the whole catalogue.
     chooserState.skills = data.Skills || [];
+
+    // a create state opened from a url may have arrived before the catalogue
+    // did, so its dependency is resolved and checked now. An unknown value is
+    // left unchecked rather than inventing an id.
+    if (chooserState.isNew && chooserState.pendingDependency) {
+        const raw = chooserState.pendingDependency;
+        const known = chooserState.skills.find(skill => skill.id === raw || skill.name === raw);
+        if (known) {
+            chooserState.selected.add(known.id);
+            setStatus(`new skill depending on ${known.name}`);
+        }
+        renderDependencyOptions();
+    }
 
     viewState.data = data;
     viewState.tree = buildSkillHierarchy(data, viewState.search);
@@ -1472,6 +1670,10 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
         const row = svg.append("g")
             .attr("class", "pillar-row")
             .attr("transform", `translate(0,${top})`);
+
+        // the row carries its skill so the ctrl-hover create button can tell
+        // which skill it is being offered beside.
+        row.node().__skill = skill;
 
         // both trees are centred vertically in the row, so the name lines up
         // with the middle of each.

@@ -1011,7 +1011,7 @@ type Queries struct {
 	//   name        string    required
 	//   description string    required
 	//   url         string    required
-	//   content     string    required
+	//   content     string    default:
 	//   keywords    string    default:
 	//   createdAt   time.Time default: now()
 	//   updatedAt   time.Time required

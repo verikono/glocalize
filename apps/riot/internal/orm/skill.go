@@ -39,7 +39,7 @@ type Skill struct {
 //	name        string    required
 //	description string    required
 //	url         string    required
-//	content     string    required
+//	content     string    default:
 //	keywords    string    default:
 //	createdAt   time.Time default: now()
 //	updatedAt   time.Time required
@@ -48,7 +48,7 @@ type SkillCreate struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Url         string     `json:"url"`
-	Content     string     `json:"content"`
+	Content     *string    `json:"content"`
 	Keywords    *string    `json:"keywords"`
 	CreatedAt   *time.Time `json:"createdAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
@@ -61,7 +61,9 @@ func (s *SkillCreate) colMask() uint64 {
 	mask |= 1 << 1
 	mask |= 1 << 2
 	mask |= 1 << 3
-	mask |= 1 << 4
+	if s.Content != nil {
+		mask |= 1 << 4
+	}
 	if s.Keywords != nil {
 		mask |= 1 << 5
 	}
@@ -366,7 +368,7 @@ func (b *SkillQueryBuilder) GetRelationParams() (*SkillSelect, *SkillOmit, Query
 //	name        string    required
 //	description string    required
 //	url         string    required
-//	content     string    required
+//	content     string    default:
 //	keywords    string    default:
 //	createdAt   time.Time default: now()
 //	updatedAt   time.Time required
@@ -401,7 +403,7 @@ type SkillCreateArgs struct {
 //	name        string    required
 //	description string    required
 //	url         string    required
-//	content     string    required
+//	content     string    default:
 //	keywords    string    default:
 //	createdAt   time.Time default: now()
 //	updatedAt   time.Time required
@@ -433,7 +435,7 @@ func (a *SkillCreateManyArgs) AppendData(builders ...*SkillCreateBuilder) *Skill
 //	name        string    required
 //	description string    required
 //	url         string    required
-//	content     string    required
+//	content     string    default:
 //	keywords    string    default:
 //	createdAt   time.Time default: now()
 //	updatedAt   time.Time required
@@ -923,8 +925,8 @@ func assignmentsToSkillCreate(assignments []FieldAssignment) (SkillCreate, error
 		case "content":
 			provided |= providedSkillContent
 			if v, ok := a.Val.(string); ok {
-				input.Content = v
-				errs.ValidateString("content", v, true, 0, false, false)
+				input.Content = &v
+				errs.ValidateString("content", v, false, 0, false, false)
 			} else {
 				errs.Add("content", a.Val, "type", "field content must be of type string")
 			}
@@ -961,9 +963,6 @@ func assignmentsToSkillCreate(assignments []FieldAssignment) (SkillCreate, error
 	if provided&providedSkillUrl == 0 {
 		errs.Add("url", "", "required", "field Url is required")
 	}
-	if provided&providedSkillContent == 0 {
-		errs.Add("content", "", "required", "field Content is required")
-	}
 	if provided&providedSkillUpdatedAt == 0 {
 		input.UpdatedAt = time.Now().Truncate(time.Microsecond)
 	}
@@ -989,8 +988,10 @@ func (s *SkillCreate) ToColsVals() (cols []string, vals []any) {
 	vals = append(vals, s.Description)
 	cols = append(cols, "url")
 	vals = append(vals, s.Url)
-	cols = append(cols, "content")
-	vals = append(vals, s.Content)
+	if s.Content != nil {
+		cols = append(cols, "content")
+		vals = append(vals, *s.Content)
+	}
 	if s.Keywords != nil {
 		cols = append(cols, "keywords")
 		vals = append(vals, *s.Keywords)
@@ -1438,7 +1439,11 @@ func (d *SkillDelegate) buildBulkInsertSQL(q *Queries, batch []*SkillCreate, par
 			case "url":
 				vals = append(vals, input.Url)
 			case "content":
-				vals = append(vals, input.Content)
+				if input.Content != nil {
+					vals = append(vals, *input.Content)
+				} else {
+					writeDefault = true
+				}
 			case "keywords":
 				if input.Keywords != nil {
 					vals = append(vals, *input.Keywords)

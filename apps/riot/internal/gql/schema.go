@@ -313,6 +313,13 @@ func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
 	keywords, _ := input["keywords"].(string)
 	id, _ := input["id"].(string)
 
+	// a skill created from the browser form may omit its url; the catalogue's
+	// convention is a sandbox url of the form skill://<project>/<name>, and
+	// every skill currently lives under the "all" project.
+	if url == "" && name != "" {
+		url = fmt.Sprintf("skill://all/%s", name)
+	}
+
 	dependencyIDs := make([]string, 0)
 	if raw, ok := input["dependencies"].([]interface{}); ok {
 		for _, item := range raw {

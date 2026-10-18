@@ -4,7 +4,7 @@ model Skill {
   name        String
   description String
   url         String   @unique
-  content     String
+  content     String   @default("") /// the skill body; a new skill starts empty
   keywords    String   @default("") /// searchable keyword string for the skill
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
