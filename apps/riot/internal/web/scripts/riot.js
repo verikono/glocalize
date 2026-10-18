@@ -120,7 +120,7 @@ const viewState = {
 };
 
 // viewNames is the set of viewstack entries the ?chart= search param accepts.
-const viewNames = ["tree", "radial", "life"];
+const viewNames = ["tree", "radial", "life", "focused-pillar"];
 
 // viewFromParam resolves the ?chart= search param to a viewstack entry,
 // falling back to the default view when it is missing or unknown.
@@ -136,6 +136,7 @@ const viewRenderer = (name) => {
     switch (name) {
         case "tree": return renderTreeSkillTree;
         case "life": return renderTreeOfLifeSkillTree;
+        case "focused-pillar": return renderFocusedPillarSkillTree;
         default: return renderRadialSkillTree;
     }
 }
@@ -694,6 +695,8 @@ const skillTreeCaption = (el, root) => {
 const skillTreeSvg = (el, label) => {
     clearLoading(el);
     el.textContent = "";
+    // only the focused-pillar view scrolls; every other view fits the stage.
+    el.classList.remove("scrolls");
 
     return d3.select(el)
         .append("svg")
@@ -1121,6 +1124,234 @@ const renderTreeOfLifeSkillTree = (el, treeData) => {
 
     skillTreeWireNodes(node, link);
     skillTreeFitAndZoom(el, svg, treeData);
+}
+
+// buildDependentIndex indexes the catalogue by id and, separately, records for
+// every skill the skills that depend on it. The dependency edges point from a
+// skill to what it needs; the focused-pillar view walks them backwards.
+const buildDependentIndex = (skills) => {
+    const byId = new Map();
+    const index = (skill) => {
+        if (!skill || !skill.id) return;
+        if (!byId.has(skill.id)) byId.set(skill.id, skill);
+        for (const dep of skill.dependencies || []) index(dep);
+    };
+    skills.forEach(index);
+
+    const dependents = new Map();
+    for (const skill of byId.values()) {
+        for (const dep of skill.dependencies || []) {
+            if (!dependents.has(dep.id)) dependents.set(dep.id, []);
+            dependents.get(dep.id).push(skill);
+        }
+    }
+    return { byId, dependents };
+}
+
+// renderFocusedPillarSkillTree draws one row per skill: the skill's name in a
+// central column, and to its right a tree of everything that depends on it,
+// each level one column further right. Rows are stacked vertically and the
+// stage scrolls, so every skill gets a full row of its own.
+const renderFocusedPillarSkillTree = (el, treeData) => {
+    if (!el || !treeData) return;
+
+    if (typeof d3 === "undefined") {
+        renderD3Missing(el);
+        return;
+    }
+
+    const skills = (viewState.data && viewState.data.Skills) || [];
+    const term = String(viewState.search || "").trim().toLowerCase();
+    const { dependents } = buildDependentIndex(skills);
+
+    const fontSize = 10;
+    const nodeRowHeight = 22;
+    const columnWidth = 170;
+    const nameColumnWidth = 260;
+    const rowPadding = 16;
+    const minRowHeight = 36;
+    // the caption is absolutely positioned over the stage, so the rows start
+    // below it rather than underneath it.
+    const headerHeight = 26;
+
+    const matches = (skill) => {
+        const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
+        return haystack.includes(term);
+    };
+    const rows = term ? skills.filter(matches) : skills;
+
+    // buildRow turns one skill into a dependents hierarchy. The skill itself is
+    // the synthetic root (it is already drawn in the name column), so only its
+    // dependents and their dependents become nodes. `seen` keeps a cycle from
+    // recursing forever.
+    const buildRow = (skill) => {
+        const seen = new Set([skill.id]);
+        const walk = (node) => {
+            const children = [];
+            for (const dependent of dependents.get(node.id) || []) {
+                if (seen.has(dependent.id)) continue;
+                seen.add(dependent.id);
+                children.push(walk(dependent));
+            }
+            return {
+                id: node.id,
+                name: node.name,
+                description: node.description || "",
+                url: node.url || "",
+                keywords: node.keywords || "",
+                children,
+            };
+        };
+        return { id: "__row__", name: "", description: "", url: "", keywords: "", children: walk(skill).children };
+    };
+
+    // lay every row out first: the tree's vertical extent decides the row's
+    // height, and the rows are then stacked.
+    let cursorY = headerHeight;
+    let maxDepth = 0;
+    const layouts = rows.map((skill) => {
+        const root = d3.hierarchy(buildRow(skill));
+        d3.tree().nodeSize([nodeRowHeight, columnWidth])(root);
+
+        const xs = root.descendants().map(d => d.x);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const height = Math.max(maxX - minX + nodeRowHeight + rowPadding, minRowHeight);
+
+        maxDepth = Math.max(maxDepth, d3.max(root.descendants(), d => d.depth) || 0);
+
+        const layout = { skill, root, minX, maxX, height, top: cursorY };
+        cursorY += height;
+        return layout;
+    });
+
+    const contentWidth = nameColumnWidth + maxDepth * columnWidth + 200;
+    const contentHeight = Math.max(cursorY, 1);
+
+    const svg = skillTreeSvg(el, "focused pillar of skills and their dependents");
+    el.classList.add("scrolls");
+
+    // this view is drawn at 1:1 and scrolled, not fitted into the stage, so it
+    // gets explicit pixel dimensions instead of a fitted viewBox. The size is
+    // set inline because the stylesheet's `#main svg` rule would otherwise
+    // stretch it to the stage and the viewBox would scale it back down.
+    svg.attr("width", contentWidth)
+        .attr("height", contentHeight)
+        .attr("viewBox", `0 0 ${contentWidth} ${contentHeight}`)
+        .attr("preserveAspectRatio", "xMinYMin meet")
+        .style("width", `${contentWidth}px`)
+        .style("height", `${contentHeight}px`);
+
+    // the rule that separates the name column from the dependents trees.
+    svg.append("line")
+        .attr("class", "pillar-rule")
+        .attr("x1", nameColumnWidth)
+        .attr("x2", nameColumnWidth)
+        .attr("y1", 0)
+        .attr("y2", contentHeight)
+        .attr("stroke", "currentColor")
+        .attr("stroke-opacity", 0.18)
+        .attr("stroke-width", 1);
+
+    const allNodes = [];
+    const allLinks = [];
+
+    for (const layout of layouts) {
+        const { skill, root, minX, maxX, height, top } = layout;
+        const row = svg.append("g")
+            .attr("class", "pillar-row")
+            .attr("transform", `translate(0,${top})`);
+
+        // the name column: the skill itself, centred in its own column.
+        const name = row.append("text")
+            .attr("class", "pillar-name")
+            .attr("x", nameColumnWidth / 2)
+            .attr("y", height / 2)
+            .attr("dy", "0.31em")
+            .attr("text-anchor", "middle")
+            .attr("font-size", fontSize + 1)
+            .attr("font-family", "sans-serif")
+            .style("cursor", "pointer")
+            .text(skillTreeTruncate(skill.name, 34));
+
+        name.append("title").text(skill.description ? `${skill.name}\n\n${skill.description}` : skill.name);
+        name.on("click", () => selectSkill(skill.name));
+
+        // the tree is centred vertically in the row, and its first level is
+        // pulled back to the name column's edge.
+        const yOffset = height / 2 - (minX + maxX) / 2;
+        const posX = (d) => nameColumnWidth + (d.y - columnWidth);
+        const posY = (d) => yOffset + d.x;
+
+        const links = root.links().filter(l => l.source.depth > 0);
+        const inner = row.append("g")
+            .attr("class", "links")
+            .attr("fill", "none")
+            .attr("stroke", "currentColor")
+            .attr("stroke-opacity", 0.35)
+            .attr("stroke-width", 1.5)
+            .selectAll("path")
+            .data(links)
+            .join("path")
+            .attr("d", d => `M${posX(d.source)},${posY(d.source)}H${posX(d.target)}V${posY(d.target)}`);
+
+        // the first level is joined straight to the name column, since the
+        // skill itself is not drawn as a node. The data is shaped like a link
+        // so the shared hover highlight treats it the same as the rest.
+        const first = row.append("g")
+            .attr("class", "links")
+            .attr("fill", "none")
+            .attr("stroke", "currentColor")
+            .attr("stroke-opacity", 0.35)
+            .attr("stroke-width", 1.5)
+            .selectAll("path")
+            .data((root.children || []).map(child => ({ source: root, target: child })))
+            .join("path")
+            .attr("d", d => `M${nameColumnWidth},${height / 2}H${posX(d.target)}V${posY(d.target)}`);
+
+        // one selection so the hover highlight covers both link groups.
+        const link = inner.merge(first);
+
+        const node = row.append("g")
+            .attr("class", "nodes")
+            .selectAll("g")
+            .data(root.descendants().filter(d => d.depth > 0))
+            .join("g")
+            .attr("class", "node")
+            .attr("transform", d => `translate(${posX(d)},${posY(d)})`);
+
+        node.append("circle")
+            .attr("class", "hit")
+            .attr("r", 9)
+            .attr("fill", "transparent");
+
+        node.append("circle")
+            .attr("r", d => (d.children ? 3.5 : 2.5))
+            .attr("fill", d => (d.children ? "currentColor" : "#8a8a8a"));
+
+        node.append("text")
+            .attr("dy", "0.31em")
+            .attr("x", 8)
+            .attr("paint-order", "stroke")
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 3)
+            .attr("stroke-linejoin", "round")
+            .attr("font-size", fontSize)
+            .attr("font-family", "sans-serif")
+            .text(d => skillTreeTruncate(d.data.name, 26));
+
+        skillTreeWireNodes(node, link);
+
+        allNodes.push(node);
+        allLinks.push(link);
+    }
+
+    // the caption counts the rows and the dependent edges drawn beneath them.
+    const caption = document.createElement("p");
+    caption.className = "caption";
+    const edges = allLinks.reduce((total, link) => total + link.size(), 0);
+    caption.textContent = `${rows.length} skills · ${edges} dependent links`;
+    el.appendChild(caption);
 }
 
 // renderD3Missing reports a failed d3 load in place of a graph.

@@ -1,0 +1,10 @@
+<div id="chooser-resizer" class="chooser-resizer" role="separator" aria-orientation="horizontal" aria-label="resize chooser" tabindex="0"></div>
+<div class="viewstack-controls">
+    <select id="viewstack-select" class="viewstack-select" aria-label="graph view">
+        <option value="radial">Radial</option>
+        <option value="tree">Tree</option>
+        <option value="life">Tree of life</option>
+        <option value="focused-pillar">Focused pillar</option>
+    </select>
+</div>
+<div id="charted_data" class="viewstack-stage"></div>

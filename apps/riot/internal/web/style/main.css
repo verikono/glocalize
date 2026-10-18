@@ -1,9 +1,415 @@
-body {
+html {
+    height: 100%;
+}
+
+html * {
+    display: flex;
     box-sizing: border-box;
     padding: 0;
     margin: 0;
 }
 
+body {
+    width: 100dvw;
+    min-height: 100dvh;
+}
+
+#root {
+    flex-direction: column;
+    flex: 1;
+    width: 100dvw;
+    min-height: 100dvh;
+    position: relative;
+}
+
+/* the navigation bar: section links on the left, the skill search on the
+   right. It sits above the chooser and the graph. */
+#navigation {
+    height: 80px;
+    flex: none;
+    align-items: center;
+    gap: 16px;
+    padding: 0 12px;
+    border-bottom: 2px solid rgb(37, 37, 37);
+    background: rgb(240, 240, 240);
+    font-family: sans-serif;
+    font-size: 13px;
+    color: rgb(37, 37, 37);
+}
+
+.nav-links {
+    gap: 14px;
+    align-items: center;
+}
+
+.nav-link {
+    color: rgb(37, 37, 37);
+    text-decoration: none;
+    padding: 4px 2px;
+    border-bottom: 2px solid transparent;
+}
+
+.nav-link:hover {
+    border-bottom-color: rgb(37, 37, 37);
+}
+
+.nav-search-wrap {
+    flex: 1;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.nav-status {
+    color: rgb(110, 110, 110);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.nav-search {
+    width: 260px;
+    max-width: 50vw;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(255, 255, 255);
+    padding: 5px 8px;
+    font: inherit;
+    color: inherit;
+}
+
 #main {
-    border: 5px solid red;
+    flex: 1;
+    min-height: 0;
+    border: 2px solid rgb(37, 37, 37);
+    position: relative;
+    overflow: hidden;
+    flex-direction: column;
+}
+
+/* the drag handle that redistributes height between #chooser and #main. It
+   rides the top edge of #main, directly beneath the chooser. */
+.chooser-resizer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    z-index: 6;
+    cursor: row-resize;
+    background: rgb(190, 210, 60);
+    border-bottom: 1px solid rgb(140, 160, 30);
+    touch-action: none;
+}
+
+.chooser-resizer:hover,
+.chooser-resizer.dragging {
+    background: rgb(205, 225, 80);
+}
+
+/* the viewstack selector, pinned to the top right of the graph area. */
+.viewstack-controls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 5;
+}
+
+.viewstack-select {
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(248, 248, 248);
+    padding: 3px 6px;
+    font-family: sans-serif;
+    font-size: 11px;
+    color: rgb(37, 37, 37);
+    cursor: pointer;
+}
+
+/* the stage holds whichever graph is active; the renderers replace its
+   children, so the resizer and the selector above are never touched. */
+.viewstack-stage {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+}
+
+/* the focused-pillar view is drawn at 1:1 and scrolled rather than fitted, so
+   the stage becomes a scroll container and the svg keeps its pixel size. The
+   stage is pinned to #main's box: as a plain flex child it would grow to fit
+   the svg and scroll the whole page instead. The selector is scoped through
+   #main to outrank the `#main svg` rule above. */
+#main .viewstack-stage.scrolls {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+}
+
+#main .viewstack-stage.scrolls svg {
+    position: static;
+    inset: auto;
+    width: auto;
+    height: auto;
+    flex: none;
+}
+
+/* the name column of the focused-pillar view reads as the row's heading. */
+#main .pillar-name {
+    font-weight: 600;
+}
+
+#main .pillar-name:hover {
+    fill: rgb(200, 60, 60);
+}
+
+/* the radial tree fills #main; the global `display: flex` rule must not leak
+   into svg children, which lay themselves out. The svg is absolutely
+   positioned because an svg with a viewBox has an intrinsic aspect ratio that
+   would otherwise force the flex container to grow past the viewport. */
+#main svg {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: rgb(37, 37, 37);
+}
+
+#main svg * {
+    display: inline;
+}
+
+/* middle-mouse drag pans the graph; the cursor shows the grab state. */
+#main svg.panning {
+    cursor: grabbing;
+}
+
+#main .caption {
+    position: absolute;
+    top: 8px;
+    left: 12px;
+    font-family: sans-serif;
+    font-size: 11px;
+    color: rgb(110, 110, 110);
+    pointer-events: none;
+}
+
+#main .node text {
+    pointer-events: none;
+    user-select: none;
+}
+
+#main .node:hover circle:not(.hit),
+#main .node.active circle:not(.hit) {
+    fill: rgb(200, 60, 60);
+}
+
+#main .node.active text {
+    font-weight: 600;
+}
+
+.load {
+    align-items: center;
+    justify-content: center;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(37, 37, 37, 0.2);
+    border-top-color: rgb(37, 37, 37);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.errored {
+    color: rgb(180, 40, 40);
+    font-family: sans-serif;
+    font-size: 13px;
+    padding: 12px;
+}
+
+#chooser {
+    height: 200px;
+    min-height: 80px;
+    flex: none;
+    background: rgb(212, 212, 212);
+    padding: 8px;
+    gap: 6px;
+    flex-direction: column;
+    font-family: sans-serif;
+    font-size: 12px;
+    color: rgb(37, 37, 37);
+}
+
+/* the chooser form: a name row with the dependency multiselect and the new
+   skill button, a description/url row, the content editor, and the actions. */
+.skill-form {
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+}
+
+.skill-row {
+    gap: 6px;
+    align-items: center;
+}
+
+.skill-row-top {
+    align-items: stretch;
+}
+
+.skill-field {
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 6px;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+}
+
+.skill-name {
+    flex: 1;
+}
+
+.skill-row .skill-field {
+    flex: 1;
+}
+
+.skill-content {
+    flex: 1;
+    min-height: 60px;
+    resize: none;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: inherit;
+}
+
+.skill-actions {
+    justify-content: flex-end;
+}
+
+.skill-status {
+    flex: 1;
+    color: rgb(110, 110, 110);
+}
+
+.skill-status.errored {
+    color: rgb(180, 40, 40);
+    padding: 0;
+}
+
+.skill-button {
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 14px;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.skill-button:hover {
+    background: rgb(250, 250, 250);
+}
+
+.skill-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.skill-square {
+    width: 26px;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    font: inherit;
+    font-size: 15px;
+    line-height: 1;
+    color: inherit;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+}
+
+.skill-square:hover {
+    background: rgb(250, 250, 250);
+}
+
+/* the dependency multiselect: a toggle that opens a checkbox list. */
+.multiselect {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.multiselect-toggle {
+    width: 100%;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 6px;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.multiselect-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.multiselect-menu {
+    display: none;
+    position: absolute;
+    z-index: 10;
+    left: 0;
+    right: 0;
+    /* the chooser is pinned to the bottom of the viewport, so the list opens
+       upward over the tree rather than downward off the page. */
+    bottom: 100%;
+    max-height: 180px;
+    overflow-y: auto;
+    flex-direction: column;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(248, 248, 248);
+}
+
+.multiselect.open .multiselect-menu {
+    display: flex;
+}
+
+.multiselect-option {
+    padding: 3px 6px;
+    gap: 6px;
+    align-items: center;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.multiselect-option:hover {
+    background: rgb(226, 226, 226);
+}
+
+.multiselect-option input {
+    margin: 0;
+}
+
+.multiselect-empty {
+    padding: 4px 6px;
+    color: rgb(110, 110, 110);
+}
 }
