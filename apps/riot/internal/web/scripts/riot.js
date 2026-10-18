@@ -743,6 +743,10 @@ const buildDependentHierarchy = (data, search = "") => {
 
     const shown = (id) => !visible || visible.has(id);
 
+    // siblings are ordered by name so the left-most column of the tree reads
+    // alphabetically instead of in catalogue order.
+    const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
+
     const placed = new Set();
     const build = (skill) => {
         placed.add(skill.id);
@@ -758,6 +762,7 @@ const buildDependentHierarchy = (data, search = "") => {
             if (placed.has(dependent.id) || !shown(dependent.id)) continue;
             node.children.push(build(dependent));
         }
+        node.children.sort(byName);
         return node;
     };
 
@@ -766,7 +771,7 @@ const buildDependentHierarchy = (data, search = "") => {
     // a root is a visible skill with no visible dependency: nothing to its
     // left, so the tree starts there.
     const hasVisibleDep = (skill) => (skill.dependencies || []).some(dep => byId.has(dep.id) && shown(dep.id));
-    const roots = [...byId.values()].filter(skill => shown(skill.id) && !hasVisibleDep(skill));
+    const roots = [...byId.values()].filter(skill => shown(skill.id) && !hasVisibleDep(skill)).sort(byName);
 
     for (const skill of roots) {
         if (placed.has(skill.id)) continue;
@@ -774,10 +779,12 @@ const buildDependentHierarchy = (data, search = "") => {
     }
 
     // a cycle has no root; place whatever is left so no skill is dropped.
-    for (const skill of byId.values()) {
+    for (const skill of [...byId.values()].sort(byName)) {
         if (!shown(skill.id) || placed.has(skill.id)) continue;
         root.children.push(build(skill));
     }
+
+    root.children.sort(byName);
 
     return root;
 }
