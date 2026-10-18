@@ -10,13 +10,9 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// WalkDotEnv loads every `.env` file found between the repository root and the
-// directory of the calling source file, so a package inherits the environment
-// declared by its ancestors. Files are applied root-first: a `.env` closer to
-// the caller wins over one further up the tree. Variables already present in
-// the process environment are never overwritten, and a missing `.env` is not an
-// error. When no repository root marker (`go.work` or `.git`) is found above
-// the caller, only the caller's own directory is considered.
+// WalkDotEnv loads every `.env` file found between the repository root and the directory of the calling source file, so a package inherits the environment declared by its ancestors.
+// Files are applied root-first: a `.env` closer to the caller wins over one further up the tree. Variables already present in the process environment are never overwritten, and a missing `.env` is not an error.
+// When no repository root marker (`go.work` or `.git`) is found above the caller, only the caller's own directory is considered.
 func WalkDotEnv() error {
 	_, filename, _, ok := runtime.Caller(1)
 	if !ok {
@@ -55,8 +51,7 @@ func applyEnv(values map[string]string) error {
 	return nil
 }
 
-// findRepoRoot walks up from dir until it finds a `go.work` or `.git` marker,
-// returning dir itself when no marker exists.
+// findRepoRoot walks up from dir until it finds a `go.work` or `.git` marker, returning dir itself when no marker exists.
 func findRepoRoot(dir string) string {
 	for current := dir; ; {
 		for _, marker := range []string{"go.work", ".git"} {
@@ -72,8 +67,7 @@ func findRepoRoot(dir string) string {
 	}
 }
 
-// pathBetween returns the directories from root down to dir, inclusive. When
-// dir is not nested under root, only dir is returned.
+// pathBetween returns the directories from root down to dir, inclusive. When dir is not nested under root, only dir is returned.
 func pathBetween(root, dir string) ([]string, error) {
 	relative, err := filepath.Rel(root, dir)
 	if err != nil {
