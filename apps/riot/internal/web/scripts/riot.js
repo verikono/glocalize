@@ -543,13 +543,16 @@ const refreshTree = async () => {
     renderActiveView();
 }
 
-// markActiveSkill highlights the node for the selected skill.
+// markActiveSkill highlights the node for the selected skill. The node's bound
+// datum is compared, not its label: labels are truncated, so a long skill name
+// would never match its own shortened text.
 const markActiveSkill = (el, name) => {
     if (!el) return;
     const nodes = el.querySelectorAll(".node");
     nodes.forEach(node => {
-        const label = node.querySelector("text");
-        node.classList.toggle("active", !!label && label.textContent === name);
+        const datum = node.__data__;
+        const nodeName = datum && datum.data ? datum.data.name : "";
+        node.classList.toggle("active", nodeName === name);
     });
 }
 
@@ -808,6 +811,11 @@ const skillTreeFitAndZoom = (el, svg, treeData) => {
 // skillTreeWireNodes binds the shared node behaviour: click loads the skill
 // into the chooser, hover highlights the path from the root to the node.
 const skillTreeWireNodes = (node, link) => {
+    // the stylesheet makes labels transparent to the pointer so they never
+    // intercept a pan; the label is still part of the node's click target, so
+    // re-enable pointer events inline (which outranks the stylesheet rule).
+    node.select("text").style("pointer-events", "all");
+
     node.append("title")
         .text(d => (d.data.description ? `${d.data.name}\n\n${d.data.description}` : d.data.name));
 
@@ -825,6 +833,11 @@ const skillTreeWireNodes = (node, link) => {
         .on("mouseleave", () => {
             link.attr("stroke-opacity", 0.35).attr("stroke-width", 1.5);
             node.classed("active", false);
+
+            // the hover highlight is transient; the selected skill's highlight
+            // is not, so restore it once the pointer leaves.
+            const name = chooserState.loaded && chooserState.loaded.name;
+            if (name) markActiveSkill(document.querySelector("#main"), name);
         });
 }
 
