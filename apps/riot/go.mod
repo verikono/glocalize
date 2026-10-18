@@ -3,6 +3,8 @@ module github.com/verikono/glocalize/apps/riot
 go 1.27.0
 
 require (
+	github.com/coder/websocket v1.8.15
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/graphql-go/graphql v0.8.1
 	github.com/graphql-go/handler v0.2.4
 	github.com/joho/godotenv v1.5.1

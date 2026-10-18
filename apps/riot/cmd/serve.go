@@ -20,6 +20,7 @@ func getServeCmd() *cli.Command {
 		Usage:   "start the riot MCP + GraphQL server (default: in the background)",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{Name: "daemon", Usage: "run the server in-process (internal)", Hidden: true},
+			&cli.BoolFlag{Name: "hot", Usage: "start with hot-reload armed on the riot dev directory"},
 			&cli.IntFlag{
 				Name:    "port",
 				Aliases: []string{"p"},
@@ -33,7 +34,16 @@ func getServeCmd() *cli.Command {
 				if err != nil {
 					return err
 				}
+				if err := utils.SetServiceHot(c.Int("port"), server.Dispatch); err != nil {
+					return err
+				}
 				return server.Start()
+			}
+			if c.Bool("hot") {
+				return StartRiotHot(c.Int("port"))
+			}
+			if err := utils.ValidateDevDir(); err != nil {
+				return err
 			}
 			return StartRiot(c.Int("port"))
 		},

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/verikono/glocalize/apps/riot/internal/gql"
 	"github.com/verikono/glocalize/apps/riot/internal/mcp"
 	orm "github.com/verikono/glocalize/apps/riot/internal/orm"
 	"github.com/verikono/glocalize/apps/riot/internal/utils"
+	"github.com/verikono/glocalize/apps/riot/internal/web"
 	T "github.com/verikono/glocalize/types/go"
 )
 
@@ -22,6 +22,7 @@ type RiotConfig struct {
 	GqlURL     UrlPath
 	McpURL     UrlPath
 	Playground UrlPath
+	UiURL      UrlPath
 }
 
 // RiotServer serves the GraphQL and MCP surfaces over one HTTP port, backed by the phi-generated orm client.
@@ -30,7 +31,9 @@ type RiotServer struct {
 	db     *orm.DB
 	graph  *gql.RiotGraph
 	mcps   *mcp.RiotMcp
+	ui     *web.RiotWebUi
 	mux    *http.ServeMux
+	T.HotReloadable
 }
 
 // NewRiotServer opens the store, runs migrations, builds the GraphQL schema and the MCP tool surface, and wires both onto a single mux. It returns a fully-wired server (or an error) — never a half-built one.
@@ -40,6 +43,7 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		Port:   utils.ResolvePort(),
 		GqlURL: "/graph",
 		McpURL: "/mcp",
+		UiURL:  "/chart",
 	}
 
 	config.applyEnvVars()
@@ -81,11 +85,20 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		return nil, err
 	}
 
-	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps}
+	wui, err := web.NewWebService()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps, ui: wui}
 
 	inst.mux = http.NewServeMux()
 	inst.mux.Handle(config.GqlURL, graph.Handler())
+	inst.mux.Handle("/voyager", graph.VoyagerHandler(config.GqlURL))
+	inst.mux.Handle("/graphiql", graph.ExtendedGraphiQLHandler(config.GqlURL))
 	inst.mux.Handle(config.McpURL, mcps.Handler())
+	err = wui.BindMux(inst.mux)
 	if config.Playground != "" {
 		inst.mux.Handle(config.Playground, graph.PlaygroundHandler())
 	}
@@ -128,66 +141,24 @@ func (s *RiotServer) Start() error {
 
 // Stop releases the underlying store connection.
 func (s *RiotServer) Stop() error {
+	s.Dispatch(T.HmrRefreshMessage) // tell connected clients to reload before we go away
 	if s.db == nil {
 		return nil
 	}
 	return s.db.Close()
 }
 
-// WithGqlPath overrides the GraphQL mount point.
-func WithGqlPath(value string) T.OptionerFn {
-	return func(args ...any) error {
-		for _, arg := range args {
-			if config, ok := arg.(*RiotConfig); ok {
-				config.GqlURL = value
-			}
-		}
-		return nil
+// Dispatch forwards a message to the web UI, which owns the websocket fan-out.
+func (s *RiotServer) Dispatch(message string) {
+	if s.ui != nil {
+		s.ui.Dispatch(message)
 	}
 }
 
-// WithMcpPath overrides the MCP mount point.
-func WithMcpPath(value string) T.OptionerFn {
-	return func(args ...any) error {
-		for _, arg := range args {
-			if config, ok := arg.(*RiotConfig); ok {
-				config.McpURL = value
-			}
-		}
-		return nil
+// OnDispatch handles a message addressed to the server. It forwards to the web
+// UI so the same dispatch path carries both HMR and non-HMR traffic.
+func (s *RiotServer) OnDispatch(message string) {
+	if s.ui != nil {
+		s.ui.OnDispatch(message)
 	}
-}
-
-// WithPort overrides the serve port.
-func WithPort(port int) T.OptionerFn {
-	return func(args ...any) error {
-		for _, arg := range args {
-			if config, ok := arg.(*RiotConfig); ok {
-				config.Port = port
-			}
-		}
-		return nil
-	}
-}
-
-// WithPlaygroundPath mounts the GraphQL playground at the given path when
-// non-empty.
-func WithPlaygroundPath(value string) T.OptionerFn {
-	return func(args ...any) error {
-		for _, arg := range args {
-			if config, ok := arg.(*RiotConfig); ok {
-				config.Playground = value
-			}
-		}
-		return nil
-	}
-}
-
-func (c *RiotConfig) applyEnvVars() error {
-
-	if os.Getenv("RIOT_GRAPHL_PLAYGROUND") != "" {
-		c.Playground = os.Getenv("RIOT_GRAPHL_PLAYGROUND")
-	}
-
-	return nil
 }
