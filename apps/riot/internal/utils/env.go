@@ -60,6 +60,17 @@ func ResolveDirectDataURL() string {
 	return defaultDataPath()
 }
 
+// ResolveAgentDir returns RIOT_AGENT_DIR (with a leading ~ expanded to the
+// user's home directory), or the empty string when unset. Agent files are
+// mirrored here only when it is set.
+func ResolveAgentDir() string {
+	raw := strings.TrimSpace(os.Getenv("RIOT_AGENT_DIR"))
+	if raw == "" {
+		return ""
+	}
+	return expandHome(raw)
+}
+
 // ProviderAndDSN derives the sql driver name and data source name from
 // RIOT_DATAURL. The scheme selects the dialect: sqlite:///abs/path or
 // sqlite://rel/path yields ("sqlite", "/abs/path" | "rel/path"), while

@@ -331,6 +331,9 @@ func (m *RiotMcp) onCreateAgent(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return errorResult(fmt.Errorf("create-agent: %w", err)), nil
 	}
+	if err := writeAgentFile(agent.Name, agent.Description, agent.AllowedTools); err != nil {
+		return errorResult(fmt.Errorf("create-agent: %w", err)), nil
+	}
 	return jsonResult(agent)
 }
 
@@ -361,6 +364,9 @@ func (m *RiotMcp) onUpdateAgent(ctx context.Context, request mcp.CallToolRequest
 	if err != nil {
 		return errorResult(fmt.Errorf("update-agent: %w", err)), nil
 	}
+	if err := writeAgentFile(updated.Name, updated.Description, updated.AllowedTools); err != nil {
+		return errorResult(fmt.Errorf("update-agent: %w", err)), nil
+	}
 	return jsonResult(updated)
 }
 
@@ -384,6 +390,9 @@ func (m *RiotMcp) onDeleteAgent(ctx context.Context, request mcp.CallToolRequest
 		return errorResult(fmt.Errorf("delete-agent: %w", err)), nil
 	}
 	if _, err := m.db.Agent.Delete(unique[orm.Agent]("id", agent.Id)).Exec(ctx); err != nil {
+		return errorResult(fmt.Errorf("delete-agent: %w", err)), nil
+	}
+	if err := removeAgentFile(agent.Name); err != nil {
 		return errorResult(fmt.Errorf("delete-agent: %w", err)), nil
 	}
 	return jsonResult(map[string]any{"deleted": true, "name": agent.Name})
