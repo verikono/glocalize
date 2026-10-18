@@ -93,7 +93,11 @@ func (w *RiotWebUi) renderHead() (string, error) {
 	for _, script := range w.scripts {
 		b.WriteString(`<script src="`)
 		b.WriteString(script.urlPath)
-		b.WriteString(`"></script>`)
+		b.WriteString(`"`)
+		if script.language == EcmascriptModule {
+			b.WriteString(` type="module"`)
+		}
+		b.WriteString(`></script>`)
 	}
 
 	b.WriteString("</head>")

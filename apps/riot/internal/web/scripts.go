@@ -16,9 +16,9 @@ var graphQlJs string
 var riotJs string
 
 var ScriptFiles = map[T.UrlPath]WebScript{
-	"/scripts/react.development.js": {name: "react", route: "*", urlPath: "/scripts/react.development.js", path: "./scripts/react.development.js"},
-	"/scripts/graphql.js":           {name: "graphql", route: "*", urlPath: "/scripts/graphql.js", path: "./scripts/graphql.js"},
-	"/scripts/riot.js":              {name: "riot", route: "*", urlPath: "/scripts/riot.js", path: "./scripts/riot.js"},
+	"/scripts/react.development.js": {name: "react", route: "*", urlPath: "/scripts/react.development.js", path: "./scripts/react.development.js", language: CommonJavascript},
+	"/scripts/graphql.js":           {name: "graphql", route: "*", urlPath: "/scripts/graphql.js", path: "./scripts/graphql.js", language: EcmascriptModule},
+	"/scripts/riot.js":              {name: "riot", route: "*", urlPath: "/scripts/riot.js", path: "./scripts/riot.js", language: CommonJavascript},
 }
 
 type WebScript struct {
@@ -67,6 +67,10 @@ var embeddedScripts = map[RelativeFilePath]Utf8String{
 	"./scripts/riot.js":              Utf8String(riotJs),
 }
 
+// remoteCommonScripts are browser-ready ESM bundles. The npm package's own
+// files are CommonJS fragments that reference `exports` and relative
+// `require`s, so they cannot run in a browser; jsDelivr's +esm build is a
+// self-contained module.
 var remoteCommonScripts = []T.Url{
-	"https://cdn.jsdelivr.net/npm/graphql@17.0.2/execution/execute.min.js",
+	"https://cdn.jsdelivr.net/npm/graphql@17.0.2/+esm",
 }
