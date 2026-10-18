@@ -147,18 +147,23 @@ func TestBrothelRejectsEmptyIdentifier(t *testing.T) {
 	}
 }
 
-func TestAgentAlive(t *testing.T) {
-	// model := os.Getenv("RIOT_DEFAULT_MODEL")
-	// key := os.Getenv("RIOT_MODEL_KEY")
-	// baseurl := os.Getenv("RIOT_MODEL_BASEURL")
-	// provider := os.Getenv("RIOT_MODEL_PROVIDER")
-	// if model == "" || key == "" || baseurl == "" || provider == "" {
-	// 	t.Fatal("keys are not set")
-	// }
-	agent, err := A.NewProsti(A.WithAPIKey("test-key"))
-	if err != nil {
-		t.Fatalf("NewProsti() returned an error: %v", err)
+func TestAskQuestion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping live model call in short mode")
 	}
-	_ = agent
-	fmt.Printf("asdf")
+	for _, key := range []string{"RIOT_DEFAULT_MODEL", "RIOT_MODEL_KEY", "RIOT_MODEL_BASEURL"} {
+		if os.Getenv(key) == "" {
+			t.Skipf("%s is not set; skipping live model call", key)
+		}
+	}
+
+	answer, err := A.AskAQuestion("how long does it take to fly to pluto?")
+	if err != nil {
+		t.Fatalf("AskAQuestion() returned an error: %v", err)
+	}
+	if answer == "" {
+		t.Fatal("AskAQuestion() returned an empty answer")
+	}
+	t.Logf("answer: %s", answer)
+	fmt.Printf("\n\nAnswer:\n%s\n\n", answer)
 }
