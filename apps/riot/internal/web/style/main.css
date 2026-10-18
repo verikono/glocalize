@@ -359,11 +359,10 @@ body {
     z-index: 10;
     left: 0;
     right: 0;
-    /* the chooser is pinned to the bottom of the viewport, so the list opens
-       upward over the tree rather than downward off the page. */
-    bottom: 100%;
-    max-height: 180px;
-    overflow-y: auto;
+    /* the chooser sits at the top of the page, so the list drops downward over
+       the graph. */
+    top: 100%;
+    max-height: 220px;
     flex-direction: column;
     border: 1px solid rgb(120, 120, 120);
     background: rgb(248, 248, 248);
@@ -371,6 +370,30 @@ body {
 
 .multiselect.open .multiselect-menu {
     display: flex;
+}
+
+/* the filter stays pinned above the list while the options scroll. */
+.multiselect-search {
+    flex: none;
+    border: none;
+    border-bottom: 1px solid rgb(190, 190, 190);
+    background: rgb(255, 255, 255);
+    padding: 4px 6px;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+}
+
+.multiselect-search:focus {
+    outline: none;
+    border-bottom-color: rgb(120, 120, 120);
+}
+
+.multiselect-options {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    flex-direction: column;
 }
 
 .multiselect-option {

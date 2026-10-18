@@ -108,6 +108,11 @@ const chooserState = {
     skills: [],
     loaded: null,
     isNew: false,
+    // the ids of the checked dependencies, kept here rather than read from the
+    // dom so filtering the list does not lose a selection.
+    selected: new Set(),
+    // the current filter string of the dependency multiselect.
+    filter: "",
 };
 
 // view state: the last catalogue payload, the hierarchy currently drawn (which
@@ -364,11 +369,20 @@ const wireChooser = () => {
     const multiselect = document.querySelector("#skill-dependencies");
     const toggle = multiselect.querySelector(".multiselect-toggle");
     const menu = multiselect.querySelector(".multiselect-menu");
+    const search = multiselect.querySelector(".multiselect-search");
+    const options = multiselect.querySelector(".multiselect-options");
 
     toggle.addEventListener("click", (event) => {
         event.stopPropagation();
         const open = multiselect.classList.toggle("open");
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+            // every opening starts from the full list.
+            search.value = "";
+            chooserState.filter = "";
+            renderDependencyOptions();
+            search.focus();
+        }
     });
 
     // clicking anywhere else closes the menu.
@@ -379,7 +393,19 @@ const wireChooser = () => {
         }
     });
 
-    menu.addEventListener("change", () => updateMultiselectLabel());
+    // the filter narrows the list without disturbing the checked set.
+    search.addEventListener("input", () => {
+        chooserState.filter = search.value.trim().toLowerCase();
+        renderDependencyOptions();
+    });
+
+    options.addEventListener("change", (event) => {
+        const box = event.target;
+        if (!box || box.type !== "checkbox") return;
+        if (box.checked) chooserState.selected.add(box.value);
+        else chooserState.selected.delete(box.value);
+        updateMultiselectLabel();
+    });
 
     document.querySelector("#skill-new").addEventListener("click", () => {
         // a new skill that depends on the one currently loaded.
@@ -437,25 +463,37 @@ const fillForm = (skill) => {
     document.querySelector("#skill-content").value = skill.content;
     const keywords = document.querySelector("#skill-keywords");
     if (keywords) keywords.value = skill.keywords || "";
-    renderDependencyOptions(skill.dependencies || []);
+
+    // a freshly loaded skill starts with an unfiltered list.
+    chooserState.selected = new Set(skill.dependencies || []);
+    chooserState.filter = "";
+    const search = document.querySelector("#skill-dependencies .multiselect-search");
+    if (search) search.value = "";
+    renderDependencyOptions();
 }
 
-// renderDependencyOptions lists every skill in the catalogue as a checkbox,
-// checked when it is one of the skill's dependencies. The skill being edited
-// is left out: a skill cannot depend on itself.
-const renderDependencyOptions = (selected) => {
-    const menu = document.querySelector("#skill-dependencies .multiselect-menu");
-    const chosen = new Set(selected);
+// renderDependencyOptions lists the catalogue as checkboxes, alphabetically,
+// narrowed by the current filter and checked from chooserState.selected. The
+// skill being edited is left out: a skill cannot depend on itself.
+const renderDependencyOptions = () => {
+    const list = document.querySelector("#skill-dependencies .multiselect-options");
+    if (!list) return;
+
     const selfId = chooserState.isNew ? "" : (chooserState.loaded && chooserState.loaded.id) || "";
+    const filter = chooserState.filter;
 
-    menu.textContent = "";
+    list.textContent = "";
 
-    const options = chooserState.skills.filter(skill => skill.id !== selfId);
+    const options = chooserState.skills
+        .filter(skill => skill.id !== selfId)
+        .filter(skill => !filter || String(skill.name || "").toLowerCase().includes(filter))
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
     if (options.length === 0) {
         const empty = document.createElement("div");
         empty.className = "multiselect-empty";
-        empty.textContent = "no skills";
-        menu.appendChild(empty);
+        empty.textContent = filter ? "no matching skills" : "no skills";
+        list.appendChild(empty);
         updateMultiselectLabel();
         return;
     }
@@ -467,14 +505,14 @@ const renderDependencyOptions = (selected) => {
         const input = document.createElement("input");
         input.type = "checkbox";
         input.value = skill.id;
-        input.checked = chosen.has(skill.id);
+        input.checked = chooserState.selected.has(skill.id);
 
         const text = document.createElement("span");
         text.textContent = skill.name;
 
         label.appendChild(input);
         label.appendChild(text);
-        menu.appendChild(label);
+        list.appendChild(label);
     }
     updateMultiselectLabel();
 }
@@ -490,15 +528,12 @@ const updateMultiselectLabel = () => {
     const names = checked.map(id => {
         const skill = chooserState.skills.find(s => s.id === id);
         return skill ? skill.name : id;
-    });
+    }).sort((a, b) => String(a).localeCompare(String(b)));
     label.textContent = names.join(", ");
 }
 
-// selectedDependencies returns the ids of the checked dependency boxes.
-const selectedDependencies = () => {
-    const boxes = document.querySelectorAll("#skill-dependencies .multiselect-menu input:checked");
-    return Array.from(boxes, box => box.value);
-}
+// selectedDependencies returns the ids of the checked dependencies.
+const selectedDependencies = () => Array.from(chooserState.selected);
 
 // saveSkill posts the form through the SaveSkill mutation and refreshes the
 // tree so the new dependency edges are drawn.

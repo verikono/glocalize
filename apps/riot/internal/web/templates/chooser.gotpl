@@ -5,7 +5,10 @@
             <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
                 <span class="multiselect-label">MultiSelect &lt;Dependencies&gt;</span>
             </button>
-            <div class="multiselect-menu" role="listbox" aria-multiselectable="true"></div>
+            <div class="multiselect-menu">
+                <input class="multiselect-search" type="search" placeholder="filter skills" spellcheck="false" aria-label="filter skills" />
+                <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+            </div>
         </div>
         <button type="button" id="skill-new" class="skill-square" title="new skill depending on this one" aria-label="new skill depending on this one">+</button>
     </div>
