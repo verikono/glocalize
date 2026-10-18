@@ -22,10 +22,14 @@ type RiotWebUi struct {
 	T.HotReloadable
 }
 
-// ServeHTTP routes the request: a known script urlPath has its contents written out as if it were a file, the document route renders the page, and everything else is not found.
+// ServeHTTP routes the request: a known script or stylesheet urlPath has its contents written out as if it were a file, the document route renders the page, and everything else is not found.
 func (rw *RiotWebUi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if script, ok := rw.scripts[r.URL.Path]; ok {
 		rw.writeScript(w, r, script)
+		return
+	}
+	if sheet, ok := rw.styles[r.URL.Path]; ok {
+		rw.writeStyle(w, r, sheet)
 		return
 	}
 	if !rw.isUiPath(r.URL.Path) {
@@ -44,6 +48,12 @@ func (rw *RiotWebUi) isUiPath(path string) bool {
 func (rw *RiotWebUi) writeScript(w http.ResponseWriter, r *http.Request, script WebScript) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	http.ServeContent(w, r, script.urlPath, time.Time{}, bytes.NewReader([]byte(script.GetContent())))
+}
+
+// writeStyle writes the embedded stylesheet out as though it were a css file served from disk: content-type and content-length headers, then the source body.
+func (rw *RiotWebUi) writeStyle(w http.ResponseWriter, r *http.Request, sheet StyleSheet) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	http.ServeContent(w, r, sheet.urlPath, time.Time{}, bytes.NewReader([]byte(sheet.GetContent())))
 }
 
 // Render writes the full HTML document for the route to w.
@@ -78,16 +88,16 @@ func (w *RiotWebUi) renderDocument() (string, error) {
 	return b.String(), nil
 }
 
-// renderHead renders <head> with the styles inlined and the scripts referenced
-// by url, so the browser fetches each script from the server.
+// renderHead renders <head> with the styles and scripts referenced by url, so
+// the browser fetches each one from the server.
 func (w *RiotWebUi) renderHead() (string, error) {
 	var b strings.Builder
 	b.WriteString("<head>")
 
 	for _, sheet := range w.styles {
-		b.WriteString("<style>")
-		b.WriteString(sheet.GetContent())
-		b.WriteString("</style>")
+		b.WriteString(`<link rel="stylesheet" href="`)
+		b.WriteString(sheet.urlPath)
+		b.WriteString(`">`)
 	}
 
 	for _, script := range w.scripts {

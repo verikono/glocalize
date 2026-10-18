@@ -9,8 +9,10 @@ import (
 //go:embed style/main.css
 var styleMainCss string
 
+// StyleSheets is keyed by urlPath, matching how ScriptFiles is keyed, so a
+// request path can be looked up directly.
 var StyleSheets = map[T.UrlPath]StyleSheet{
-	"/chart/style/main.css": {name: "main", route: "*", urlPath: "/style/main.css", path: "./style/main.css"},
+	"/styles/main.css": {name: "main", route: "*", urlPath: "/styles/main.css", path: "./style/main.css"},
 }
 
 type StyleSheet struct {
@@ -35,7 +37,7 @@ func init() {
 }
 
 // LoadSheets loads each sheet's css from its embedded source into content, so
-// it can be inlined into the document without a filesystem read at runtime.
+// it can be served without a filesystem read at runtime.
 func LoadSheets() {
 	for key, sheet := range StyleSheets {
 		if content, ok := embeddedStyles[sheet.path]; ok {
