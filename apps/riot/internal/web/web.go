@@ -85,7 +85,8 @@ func (w *RiotWebUi) renderDocument() (string, error) {
 	return b.String(), nil
 }
 
-// renderHead renders <head> with the styles and scripts inlined.
+// renderHead renders <head> with the styles inlined and the scripts referenced
+// by url so they are served as static files.
 func (w *RiotWebUi) renderHead() (string, error) {
 	var b strings.Builder
 	b.WriteString("<head>")
@@ -97,9 +98,9 @@ func (w *RiotWebUi) renderHead() (string, error) {
 	}
 
 	for _, script := range w.scripts {
-		b.WriteString("<script>")
-		b.WriteString(script.GetContent())
-		b.WriteString("</script>")
+		b.WriteString(`<script src="`)
+		b.WriteString(script.urlPath)
+		b.WriteString(`"></script>`)
 	}
 
 	b.WriteString("</head>")
