@@ -14,6 +14,7 @@ func NewApp() *cli.Command {
 		Usage: "riot MCP + GraphQL service",
 		Commands: []*cli.Command{
 			getServeCmd(),
+			getRestartCmd(),
 			getStatusCmd(),
 			getDownCmd(),
 		},

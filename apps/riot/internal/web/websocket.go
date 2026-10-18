@@ -13,17 +13,14 @@ const (
 	// wsPath is the websocket endpoint the browser client connects to.
 	wsPath = "/ws"
 
-	// wsWriteTimeout bounds a single write to a client, so one stalled
-	// connection cannot hold the broadcaster.
+	// wsWriteTimeout bounds a single write to a client, so one stalled connection cannot hold the broadcaster.
 	wsWriteTimeout = 5 * time.Second
 
-	// wsSendBuffer is how many messages may queue for one client before it is
-	// considered behind and skipped.
+	// wsSendBuffer is how many messages may queue for one client before it is considered behind and skipped.
 	wsSendBuffer = 8
 )
 
-// wsClient is one connected browser. send is buffered so the broadcaster never
-// blocks on a slow client.
+// wsClient is one connected browser. send is buffered so the broadcaster never blocks on a slow client.
 type wsClient struct {
 	conn *websocket.Conn
 	send chan string
@@ -51,8 +48,7 @@ func (h *hub) remove(client *wsClient) {
 	delete(h.clients, client)
 }
 
-// broadcast delivers message to every client. A client whose buffer is full is
-// skipped: it is already behind and the next message will catch it up.
+// broadcast delivers message to every client. A client whose buffer is full is skipped: it is already behind and the next message will catch it up.
 func (h *hub) broadcast(message string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -64,8 +60,7 @@ func (h *hub) broadcast(message string) {
 	}
 }
 
-// websocketHandler upgrades the request to a websocket and serves the client
-// until it disconnects.
+// websocketHandler upgrades the request to a websocket and serves the client until it disconnects.
 func (w *RiotWebUi) websocketHandler() http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(rw, r, nil)
@@ -84,9 +79,7 @@ func (w *RiotWebUi) websocketHandler() http.Handler {
 	})
 }
 
-// serveClient writes queued messages to the client until it disconnects. A
-// reader runs alongside because the write side alone cannot tell a quiet
-// client from a closed one.
+// serveClient writes queued messages to the client until it disconnects. A reader runs alongside because the write side alone cannot tell a quiet client from a closed one.
 func (w *RiotWebUi) serveClient(ctx context.Context, client *wsClient) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

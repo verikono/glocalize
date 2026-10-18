@@ -12,12 +12,16 @@ var reactDevJs string
 //go:embed scripts/graphql.js
 var graphQlJs string
 
+//go:embed scripts/d3.min.js
+var d3Js string
+
 //go:embed scripts/riot.js
 var riotJs string
 
 var ScriptFiles = map[T.UrlPath]WebScript{
 	"/scripts/react.development.js": {name: "react", route: "*", urlPath: "/scripts/react.development.js", path: "./scripts/react.development.js", language: CommonJavascript},
 	"/scripts/graphql.js":           {name: "graphql", route: "*", urlPath: "/scripts/graphql.js", path: "./scripts/graphql.js", language: EcmascriptModule},
+	"/scripts/d3.min.js":            {name: "d3", route: "*", urlPath: "/scripts/d3.min.js", path: "./scripts/d3.min.js", language: CommonJavascript},
 	"/scripts/riot.js":              {name: "riot", route: "*", urlPath: "/scripts/riot.js", path: "./scripts/riot.js", language: CommonJavascript},
 }
 
@@ -64,6 +68,7 @@ func LoadScripts() {
 var embeddedScripts = map[RelativeFilePath]Utf8String{
 	"./scripts/react.development.js": Utf8String(reactDevJs),
 	"./scripts/graphql.js":           Utf8String(graphQlJs),
+	"./scripts/d3.min.js":            Utf8String(d3Js),
 	"./scripts/riot.js":              Utf8String(riotJs),
 }
 

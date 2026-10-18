@@ -1,6 +1,0 @@
-{
-    "name": "@glocalize/agentic-litany",
-    "version": "0.0.1",
-    "type": "module",
-    "description": "agent and skill management in vscode"
-}

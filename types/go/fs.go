@@ -17,6 +17,8 @@ type FileExtension = string
 
 type GlobPattern = string
 
+type UrlPath = string
+
 func IsGlobPattern(subject string) bool {
 	return strings.Contains(subject, "*")
 }

@@ -1,0 +1,8 @@
+<nav class="nav-links" aria-label="sections">
+    <a class="nav-link" href="#">skills</a>
+    <a class="nav-link" href="#">agents</a>
+</nav>
+<div class="nav-search-wrap">
+    <span id="nav-status" class="nav-status" role="status"></span>
+    <input id="nav-search" class="nav-search" type="search" placeholder="search skills" spellcheck="false" aria-label="search skills" />
+</div>

@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -68,7 +69,8 @@ func (rw *RiotWebUi) Render(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(rendition))
 }
 
-// renderDocument assembles the full HTML document: doctype, <html>, the rendered <head> and <body>.
+// renderDocument assembles the full HTML document from the chart template:
+// the rendered <head> and the sections, which are placed inside #root.
 func (w *RiotWebUi) renderDocument() (string, error) {
 	headContent, err := w.renderHead()
 	if err != nil {
@@ -80,11 +82,9 @@ func (w *RiotWebUi) renderDocument() (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("<!doctype html>\n<html>\n")
-	b.WriteString(headContent)
-	b.WriteString("\n")
-	b.WriteString(bodyContent)
-	b.WriteString("\n</html>\n")
+	if err := chartTemplate.Execute(&b, chartTemplateData{Head: template.HTML(headContent), Root: template.HTML(bodyContent)}); err != nil {
+		return "", fmt.Errorf("execute chart template: %w", err)
+	}
 	return b.String(), nil
 }
 
@@ -101,28 +101,25 @@ func (w *RiotWebUi) renderHead() (string, error) {
 	}
 
 	for _, script := range w.scripts {
-		b.WriteString(`<script src="`)
-		b.WriteString(script.urlPath)
-		b.WriteString(`"`)
 		if script.language == EcmascriptModule {
-			b.WriteString(` type="module"`)
+			b.WriteString(fmt.Sprintf(`<script src="%s" type="module"></script>`, script.urlPath))
+		} else {
+			b.WriteString(fmt.Sprintf(`<script src="%s"></script>`, script.urlPath))
 		}
-		b.WriteString(`></script>`)
 	}
 
 	b.WriteString("</head>")
 	return b.String(), nil
 }
 
-// renderBody renders <body> with each section element.
+// renderBody renders the sections as the document's root content. The sections
+// are placed inside #root by the chart template, not directly in <body>.
 func (w *RiotWebUi) renderBody() (string, error) {
 	var b strings.Builder
-	b.WriteString("<body>")
 
 	for _, section := range w.sections {
 		b.WriteString(section.render())
 	}
 
-	b.WriteString("</body>")
 	return b.String(), nil
 }

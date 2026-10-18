@@ -2,6 +2,8 @@ package puck
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -31,12 +33,18 @@ type watchTarget struct {
 }
 
 // run pumps fsnotify events into the listener until the watcher is closed.
+// Newly created directories are added to the watcher so the whole tree stays watched.
 func (t *watchTarget) run() {
 	for {
 		select {
 		case event, ok := <-t.watcher.Events:
 			if !ok {
 				return
+			}
+			if event.Op&NTFY.Create != 0 {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					_ = addRecursive(t.watcher, AbsoluteFsPath(event.Name))
+				}
 			}
 			_ = t.fn(FSChangeEvent{Op: event.Op, Path: AbsoluteFsPath(event.Name)})
 		case err, ok := <-t.watcher.Errors:
@@ -79,7 +87,7 @@ func (p *Puck) addWatchTarget(fn FileSystemWatcher, paths []AbsoluteFsPath) erro
 	}
 
 	for _, path := range paths {
-		if err := fsWatcher.Add(path); err != nil {
+		if err := addRecursive(fsWatcher, path); err != nil {
 			_ = fsWatcher.Close()
 			return fmt.Errorf("failed watching %s: %w", path, err)
 		}
@@ -93,6 +101,30 @@ func (p *Puck) addWatchTarget(fn FileSystemWatcher, paths []AbsoluteFsPath) erro
 
 	go target.run()
 	return nil
+}
+
+// addRecursive adds path to the watcher. Directories are added together with
+// every subdirectory beneath them, so changes anywhere in the tree are delivered.
+func addRecursive(w *NTFY.Watcher, path AbsoluteFsPath) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if err := w.Add(path); err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && p != path {
+			return w.Add(p)
+		}
+		return nil
+	})
 }
 
 // stopWatcher closes every watchTarget whose listener is fn.

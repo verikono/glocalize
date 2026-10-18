@@ -143,7 +143,13 @@ func extractEnums(pris string) []*ParsableEnumShape {
 			if commentLine.MatchString(line) {
 				continue
 			}
-			option := dropSpaces(line)
+			// An option may carry a trailing "// comment"; the comment is not
+			// part of the option name and must not swallow the option itself.
+			option := line
+			if idx := strings.Index(option, "//"); idx >= 0 {
+				option = option[:idx]
+			}
+			option = dropSpaces(option)
 			if option != "" {
 				current.Options = append(current.Options, option)
 			}

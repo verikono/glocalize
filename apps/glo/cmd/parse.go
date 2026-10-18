@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	cli "github.com/urfave/cli/v3"
 
@@ -25,18 +26,21 @@ func getParseCmd() *cli.Command {
 			},
 		},
 		Action: func(_ context.Context, c *cli.Command) error {
-			source := c.Args().Get(0)
+			sources := c.Args().Slice()
+			if len(sources) == 0 {
+				return fmt.Errorf("parse requires at least one source file")
+			}
 			target := c.String("out")
 			opts := []OptionerFn{}
 			if c.String("out-format") != "" {
 				opts = append(opts, internal.WithTargetFormat(c.String("out-format")))
 			}
-			result, err := internal.ParseSchema(source, target, opts...)
+			result, err := internal.ParseSchemas(sources, target, opts...)
 			if err != nil {
 				fmt.Printf("\nerror: %s\n", err)
 				return err
 			}
-			fmt.Printf("\n%s\n%s\n", source, *result)
+			fmt.Printf("\n%s\n%s\n", strings.Join(sources, ", "), *result)
 			return nil
 		},
 	}

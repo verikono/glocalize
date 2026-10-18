@@ -11,12 +11,19 @@ func NewWebService() (*RiotWebUi, error) {
 		route: "/chart/",
 		sections: []RiotWebSection{
 			{
-				name:    "main",
-				classes: []string{"main"},
+				name:     "navigation",
+				element:  "nav",
+				classes:  []string{"navigation"},
+				template: "navigation",
 			},
 			{
 				name:    "chooser",
 				classes: []string{"selector"},
+			},
+			{
+				name:     "main",
+				classes:  []string{"main"},
+				template: "main",
 			},
 		},
 		styles:   StyleSheets,

@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/verikono/glocalize/packages/go/data/prisma/graphql"
 	"github.com/verikono/glocalize/packages/go/puck"
@@ -63,9 +64,19 @@ func getParserFunction(targetFormat T.DataFormat) (T.SchemaParser, error) {
 }
 
 func ParseSchema(source FileResourceIdentifier, target T.AbsoluteFilePath, options ...OptionerFn) (*T.Schema, error) {
+	return ParseSchemas([]FileResourceIdentifier{source}, target, options...)
+}
+
+// ParseSchemas merges every source document into one schema before parsing, so
+// a shell-expanded glob (a.prisma b.prisma ...) is treated as a single schema.
+func ParseSchemas(sources []FileResourceIdentifier, target T.AbsoluteFilePath, options ...OptionerFn) (*T.Schema, error) {
+
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("ParseSchemas requires at least one source")
+	}
 
 	config := ParseConfig{
-		source: source,
+		source: sources[0],
 		target: target,
 	}
 
@@ -88,12 +99,17 @@ func ParseSchema(source FileResourceIdentifier, target T.AbsoluteFilePath, optio
 		return nil, err
 	}
 
-	sourceContent, err := puck.From(config.source).Read()
-	if err != nil {
-		return nil, err
+	var merged strings.Builder
+	for _, source := range sources {
+		sourceContent, err := puck.From(source).Read()
+		if err != nil {
+			return nil, err
+		}
+		merged.WriteString(string(sourceContent))
+		merged.WriteString("\n")
 	}
 
-	result, err := parser(sourceContent)
+	result, err := parser(merged.String())
 	if err != nil {
 		return nil, err
 	}
