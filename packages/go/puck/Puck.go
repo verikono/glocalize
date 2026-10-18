@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	GT "github.com/verikono/glocalize/types/go"
 )
@@ -13,11 +14,13 @@ import (
 type BytesSize = int
 
 type Puck struct {
-	url      GT.Url
-	glob     GlobPattern
-	protocol GT.UrlProtocol
-	format   GT.DataFormat
-	resource ResourceType
+	url        GT.Url
+	glob       GlobPattern
+	protocol   GT.UrlProtocol
+	format     GT.DataFormat
+	resource   ResourceType
+	watchers   []*watchTarget
+	watchersMu sync.Mutex
 	IPuck
 }
 
@@ -27,6 +30,7 @@ func NewPuck(options ...GT.OptionerFn) *Puck {
 		format:   FormatUnknown,
 		protocol: ProtocolFile,
 		resource: UnknownResource,
+		watchers: []*watchTarget{},
 	}
 
 	for _, option := range options {
@@ -41,6 +45,48 @@ func NewPuck(options ...GT.OptionerFn) *Puck {
 	}
 
 	return &puck
+}
+
+// place a watcher for change on the resources this puck is referencing. Use `WithWatcher`
+func (p *Puck) OnChange(options ...OptionerFn) error {
+	spec := Watcher{}
+	for _, option := range options {
+		if err := option(&spec); err != nil {
+			return err
+		}
+	}
+	if spec.fn == nil {
+		return fmt.Errorf("failed to gain a valid watcher - no function acquired")
+	}
+	if p.protocol != ProtocolFile {
+		return fmt.Errorf("cannot watch pucks pointed at resources on protocol '%s'", p.protocol)
+	}
+
+	paths, err := p.watchPaths()
+	if err != nil {
+		return err
+	}
+	return p.addWatchTarget(spec.fn, paths)
+}
+
+// remove a listener from watched resources this puck is referencing. Use `WithWatcher`
+func (p *Puck) StopWatching(options ...OptionerFn) error {
+	spec := Watcher{}
+	for _, option := range options {
+		if err := option(&spec); err != nil {
+			return err
+		}
+	}
+	if p.protocol != ProtocolFile {
+		return fmt.Errorf("cannot stop watching pucks pointed at resources on protocol '%s'", p.protocol)
+	}
+
+	if spec.fn == nil {
+		p.stopAllWatchers()
+		return nil
+	}
+	p.stopWatcher(spec.fn)
+	return nil
 }
 
 func (p *Puck) Sync() error {
@@ -150,13 +196,19 @@ func (p *Puck) Url() Url {
 }
 
 func (p *Puck) Protocol() UrlProtocol {
-	if len(p.url) > 0 {
-		parts := strings.Split(p.url, "://")
-		if GT.IsUrlProtocol(parts[0]) {
-			return UrlProtocol(parts[0])
-		}
+	protocol := p.protocolFromUrl()
+	if GT.IsUrlProtocol(string(protocol)) {
+		return protocol
 	}
 	panic(fmt.Errorf("invalid url: %s", p.url))
+}
+
+// protocolFromUrl extracts the scheme portion of p.url without validating it.
+func (p *Puck) protocolFromUrl() UrlProtocol {
+	if len(p.url) == 0 {
+		return ""
+	}
+	return UrlProtocol(strings.Split(p.url, "://")[0])
 }
 
 func (p *Puck) Format() DataFormat {
@@ -238,8 +290,9 @@ func (p *Puck) assertValidUrl() error {
 }
 
 func (p *Puck) assertValidProtocol() error {
-	if !GT.IsUrlProtocol(string(p.Protocol())) {
-		return fmt.Errorf("unsupported protocol: %s", p.Protocol())
+	protocol := p.protocolFromUrl()
+	if !GT.IsUrlProtocol(string(protocol)) {
+		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
 	return nil
 }

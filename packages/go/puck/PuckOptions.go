@@ -34,3 +34,15 @@ func isPathPattern(value string) bool {
 func isGlobPattern(value string) bool {
 	return strings.Contains(value, "*")
 }
+
+// provide a listener which will be called when change occurs.
+func WithWatcher(fn FileSystemWatcher) OptionerFn {
+	return func(args ...any) error {
+		for _, arg := range args {
+			if watcher, ok := arg.(*Watcher); ok {
+				watcher.fn = fn
+			}
+		}
+		return nil
+	}
+}
