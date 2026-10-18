@@ -153,6 +153,16 @@ const main = async (loaded,) => {
     const params = new URLSearchParams(window.location.search);
     viewState.view = viewFromParam(params);
 
+    // the ?search= param restores a search, so a narrowed graph can be linked
+    // to and survives a reload.
+    const search = String(params.get("search") || "").trim();
+    if (search) {
+        viewState.search = search;
+        const input = document.querySelector("#nav-search");
+        if (input) input.value = search;
+        setNavStatus(`search: ${search}`);
+    }
+
     // the chooser's form is static markup, so it is wired immediately rather
     // than being replaced by a spinner and rebuilt.
     wireChooser();
@@ -245,10 +255,16 @@ const wireNavigation = () => {
 }
 
 // applySearch rebuilds the hierarchy from the catalogue, keeping only skills
-// whose name matches and every dependency beneath them.
+// whose name matches and every dependency beneath them. The term is written
+// back to the ?search= param so the narrowed graph can be linked to.
 const applySearch = (value) => {
     const term = String(value || "").trim();
     viewState.search = term;
+
+    const url = new URL(window.location.href);
+    if (term) url.searchParams.set("search", term);
+    else url.searchParams.delete("search");
+    window.history.replaceState(window.history.state, "", url.toString());
 
     if (!viewState.data) return;
 
@@ -675,6 +691,97 @@ const buildSkillHierarchy = (data, search = "") => {
     return root;
 }
 
+// buildDependentHierarchy turns the flat Skills list into a hierarchy that
+// follows the dependency edges backwards: a skill's children are the skills
+// that depend on it. The roots are the skills nothing else builds on, so the
+// drawing reads left-to-right from the most fundamental skill to the most
+// derived.
+//
+// When search is non-empty only the connected component(s) containing a match
+// are kept, so a match is shown with both what it relies on and what relies on
+// it.
+const buildDependentHierarchy = (data, search = "") => {
+    const skills = (data && data.Skills) || [];
+    const term = String(search || "").trim().toLowerCase();
+
+    // index every skill we can see, including ones only reachable as a
+    // dependency, so a nested stub can be replaced by its full record.
+    const byId = new Map();
+    const index = (skill) => {
+        if (!skill || !skill.id) return;
+        if (!byId.has(skill.id)) byId.set(skill.id, skill);
+        for (const dep of skill.dependencies || []) index(dep);
+    };
+    skills.forEach(index);
+
+    // dependents maps a skill id to the skills that depend on it.
+    const dependents = new Map();
+    for (const skill of byId.values()) {
+        for (const dep of skill.dependencies || []) {
+            if (!dependents.has(dep.id)) dependents.set(dep.id, []);
+            dependents.get(dep.id).push(skill);
+        }
+    }
+
+    // visible is the set of skills to draw: everything, or the connected
+    // component(s) around a match. Edges are walked in both directions so a
+    // match brings in what it depends on and what depends on it.
+    let visible = null;
+    if (term) {
+        const matches = (skill) => `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase().includes(term);
+        visible = new Set();
+        const stack = [...byId.values()].filter(matches).map(skill => skill.id);
+        while (stack.length) {
+            const id = stack.pop();
+            if (visible.has(id)) continue;
+            visible.add(id);
+            const skill = byId.get(id);
+            for (const dep of (skill && skill.dependencies) || []) stack.push(dep.id);
+            for (const dependent of dependents.get(id) || []) stack.push(dependent.id);
+        }
+    }
+
+    const shown = (id) => !visible || visible.has(id);
+
+    const placed = new Set();
+    const build = (skill) => {
+        placed.add(skill.id);
+        const node = {
+            id: skill.id,
+            name: skill.name,
+            description: skill.description || "",
+            url: skill.url || "",
+            keywords: skill.keywords || "",
+            children: [],
+        };
+        for (const dependent of dependents.get(skill.id) || []) {
+            if (placed.has(dependent.id) || !shown(dependent.id)) continue;
+            node.children.push(build(dependent));
+        }
+        return node;
+    };
+
+    const root = { id: "__root__", name: "skills", description: "", url: "", keywords: "", children: [] };
+
+    // a root is a visible skill with no visible dependency: nothing to its
+    // left, so the tree starts there.
+    const hasVisibleDep = (skill) => (skill.dependencies || []).some(dep => byId.has(dep.id) && shown(dep.id));
+    const roots = [...byId.values()].filter(skill => shown(skill.id) && !hasVisibleDep(skill));
+
+    for (const skill of roots) {
+        if (placed.has(skill.id)) continue;
+        root.children.push(build(skill));
+    }
+
+    // a cycle has no root; place whatever is left so no skill is dropped.
+    for (const skill of byId.values()) {
+        if (!shown(skill.id) || placed.has(skill.id)) continue;
+        root.children.push(build(skill));
+    }
+
+    return root;
+}
+
 // skillTreeTruncate shortens a label so long skill names do not swamp the
 // drawing. The full name is always available in the node's <title>.
 const skillTreeTruncate = (name, maxChars = 22) => {
@@ -695,8 +802,6 @@ const skillTreeCaption = (el, root) => {
 const skillTreeSvg = (el, label) => {
     clearLoading(el);
     el.textContent = "";
-    // only the focused-pillar view scrolls; every other view fits the stage.
-    el.classList.remove("scrolls");
 
     return d3.select(el)
         .append("svg")
@@ -943,31 +1048,37 @@ const renderRadialSkillTree = (el, treeData) => {
 }
 
 // renderTreeSkillTree draws the hierarchy as an indented left-to-right tree,
-// one row per node, with step-before links.
+// one row per node, with step-before links. The hierarchy follows the
+// dependency edges backwards, so a skill's dependencies sit to its left and
+// the skills that depend on it sit to its right.
 // https://observablehq.com/@observablehq/plot-custom-tree-layout
-const renderTreeSkillTree = (el, treeData) => {
-    if (!el || !treeData) return;
+const renderTreeSkillTree = (el) => {
+    if (!el) return;
 
     if (typeof d3 === "undefined") {
         renderD3Missing(el);
         return;
     }
 
+    const hierarchy = buildDependentHierarchy(viewState.data, viewState.search);
+
     const fontSize = 10;
     const rowHeight = 20;
     const columnWidth = 190;
 
-    const root = d3.hierarchy(treeData);
+    const root = d3.hierarchy(hierarchy);
 
-    // the indent layout: depth becomes the column, and each node takes the
-    // next free row in a pre-order walk.
-    let row = 0;
-    root.eachBefore(node => {
-        node.y = node.depth * columnWidth;
-        node.x = row++ * rowHeight;
-    });
+    // the tidy layout: depth becomes the column and siblings stack vertically,
+    // so a chain of skills reads as one straight horizontal row rather than a
+    // staircase. nodeSize is [row, column] because the tree grows sideways.
+    d3.tree().nodeSize([rowHeight, columnWidth])(root);
 
     const svg = skillTreeSvg(el, "indented tree of skills and their dependencies");
+
+    // the synthetic root is not drawn: it would sit a whole column to the left
+    // of the first real skill and add a long empty link. Columns are shifted
+    // back by one so the first real skill starts at the left edge.
+    const posX = (d) => (d.depth - 1) * columnWidth;
 
     // links: a step-before path, horizontal to the child's column then
     // vertical to its row.
@@ -978,17 +1089,17 @@ const renderTreeSkillTree = (el, treeData) => {
         .attr("stroke-opacity", 0.35)
         .attr("stroke-width", 1.5)
         .selectAll("path")
-        .data(root.links())
+        .data(root.links().filter(l => l.source.depth > 0))
         .join("path")
-        .attr("d", d => `M${d.source.y},${d.source.x}H${d.target.y}V${d.target.x}`);
+        .attr("d", d => `M${posX(d.source)},${d.source.x}H${posX(d.target)}V${d.target.x}`);
 
     const node = svg.append("g")
         .attr("class", "nodes")
         .selectAll("g")
-        .data(root.descendants())
+        .data(root.descendants().filter(d => d.depth > 0))
         .join("g")
         .attr("class", "node")
-        .attr("transform", d => `translate(${d.y},${d.x})`);
+        .attr("transform", d => `translate(${posX(d)},${d.x})`);
 
     node.append("circle")
         .attr("class", "hit")
@@ -996,7 +1107,7 @@ const renderTreeSkillTree = (el, treeData) => {
         .attr("fill", "transparent");
 
     node.append("circle")
-        .attr("r", d => (d.depth === 0 ? 4 : d.children ? 3.5 : 2.5))
+        .attr("r", d => (d.children ? 3.5 : 2.5))
         .attr("fill", d => (d.children ? "currentColor" : "#8a8a8a"));
 
     node.append("text")
@@ -1008,12 +1119,14 @@ const renderTreeSkillTree = (el, treeData) => {
         .attr("stroke-linejoin", "round")
         .attr("font-size", fontSize)
         .attr("font-family", "sans-serif")
-        .text(d => (d.depth === 0 ? "" : skillTreeTruncate(d.data.name, 30)));
+        .text(d => skillTreeTruncate(d.data.name, 30));
 
     skillTreeCaption(el, root);
 
     skillTreeWireNodes(node, link);
-    skillTreeFitAndZoom(el, svg, treeData);
+    // the zoom is keyed by the catalogue hierarchy, not the dependent one
+    // rebuilt here, so a resize redraw keeps the user's pan and zoom.
+    skillTreeFitAndZoom(el, svg, viewState.tree);
 }
 
 // renderTreeOfLifeSkillTree draws the hierarchy as a radial cluster whose
@@ -1170,9 +1283,6 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     const nameColumnWidth = 260;
     const rowPadding = 16;
     const minRowHeight = 36;
-    // the caption is absolutely positioned over the stage, so the rows start
-    // below it rather than underneath it.
-    const headerHeight = 26;
 
     const matches = (skill) => {
         const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
@@ -1207,7 +1317,7 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
 
     // lay every row out first: the tree's vertical extent decides the row's
     // height, and the rows are then stacked.
-    let cursorY = headerHeight;
+    let cursorY = 0;
     let maxDepth = 0;
     const layouts = rows.map((skill) => {
         const root = d3.hierarchy(buildRow(skill));
@@ -1229,18 +1339,12 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     const contentHeight = Math.max(cursorY, 1);
 
     const svg = skillTreeSvg(el, "focused pillar of skills and their dependents");
-    el.classList.add("scrolls");
 
-    // this view is drawn at 1:1 and scrolled, not fitted into the stage, so it
-    // gets explicit pixel dimensions instead of a fitted viewBox. The size is
-    // set inline because the stylesheet's `#main svg` rule would otherwise
-    // stretch it to the stage and the viewBox would scale it back down.
-    svg.attr("width", contentWidth)
-        .attr("height", contentHeight)
-        .attr("viewBox", `0 0 ${contentWidth} ${contentHeight}`)
-        .attr("preserveAspectRatio", "xMinYMin meet")
-        .style("width", `${contentWidth}px`)
-        .style("height", `${contentHeight}px`);
+    // the drawing is laid out in its own pixel space and then fitted into the
+    // stage by the shared zoom/pan helper, exactly like the other views. #main
+    // stays overflow:hidden, so the wheel and middle-drag gestures are the only
+    // way to move around a drawing taller than the stage.
+    svg.attr("viewBox", `0 0 ${contentWidth} ${contentHeight}`);
 
     // the rule that separates the name column from the dependents trees.
     svg.append("line")
@@ -1352,6 +1456,10 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     const edges = allLinks.reduce((total, link) => total + link.size(), 0);
     caption.textContent = `${rows.length} skills · ${edges} dependent links`;
     el.appendChild(caption);
+
+    // the zoom is keyed by the catalogue hierarchy, not the dependent one
+    // rebuilt here, so a resize redraw keeps the user's pan and zoom.
+    skillTreeFitAndZoom(el, svg, viewState.tree);
 }
 
 // renderD3Missing reports a failed d3 load in place of a graph.
