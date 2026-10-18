@@ -1,9 +1,11 @@
 package web
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	T "github.com/verikono/glocalize/types/go"
 )
@@ -37,7 +39,7 @@ func NewWebService() (*RiotWebUi, error) {
 }
 
 // Handler returns an http.Handler that serves the riot web UI. It lazily
-// builds the shared Service and renders the response for every request.
+// builds the shared Service and dispatches every request to it.
 func Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if Service == nil {
@@ -48,8 +50,36 @@ func Handler() http.Handler {
 				return
 			}
 		}
-		Service.Render(w, r)
+		Service.ServeHTTP(w, r)
 	})
+}
+
+// ServeHTTP routes the request: a known script urlPath has its contents
+// written out as if it were a file, the document route renders the page, and
+// everything else is not found.
+func (rw *RiotWebUi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if script, ok := rw.scripts[r.URL.Path]; ok {
+		rw.writeScript(w, r, script)
+		return
+	}
+	if !rw.isUiPath(r.URL.Path) {
+		http.NotFound(w, r)
+		return
+	}
+	rw.Render(w, r)
+}
+
+// isUiPath reports whether path is the document route ("/chart" or any path
+// beneath it).
+func (rw *RiotWebUi) isUiPath(path string) bool {
+	return path == strings.TrimSuffix(rw.route, "/") || strings.HasPrefix(path, rw.route)
+}
+
+// writeScript writes the embedded script out as though it were a file served
+// from disk: content-type and content-length headers, then the source body.
+func (rw *RiotWebUi) writeScript(w http.ResponseWriter, r *http.Request, script WebScript) {
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	http.ServeContent(w, r, script.urlPath, time.Time{}, bytes.NewReader([]byte(script.GetContent())))
 }
 
 // Render writes the full HTML document for the route to w.
@@ -86,7 +116,7 @@ func (w *RiotWebUi) renderDocument() (string, error) {
 }
 
 // renderHead renders <head> with the styles inlined and the scripts referenced
-// by url so they are served as static files.
+// by url, so the browser fetches each script from the server.
 func (w *RiotWebUi) renderHead() (string, error) {
 	var b strings.Builder
 	b.WriteString("<head>")
