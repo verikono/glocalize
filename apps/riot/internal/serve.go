@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/verikono/glocalize/apps/riot/internal/gql"
 	"github.com/verikono/glocalize/apps/riot/internal/mcp"
@@ -15,8 +16,7 @@ import (
 // UrlPath is a URL path mounted on the single HTTP server, e.g. "/graph".
 type UrlPath = string
 
-// RiotConfig holds the server's wiring: the port and the mount points for the
-// GraphQL and MCP surfaces (plus an optional playground path).
+// RiotConfig holds the server's wiring: the port and the mount points for the GraphQL and MCP surfaces (plus an optional playground path).
 type RiotConfig struct {
 	Port       int
 	GqlURL     UrlPath
@@ -24,8 +24,7 @@ type RiotConfig struct {
 	Playground UrlPath
 }
 
-// RiotServer serves the GraphQL and MCP surfaces over one HTTP port, backed by
-// the phi-generated orm client.
+// RiotServer serves the GraphQL and MCP surfaces over one HTTP port, backed by the phi-generated orm client.
 type RiotServer struct {
 	config RiotConfig
 	db     *orm.DB
@@ -34,15 +33,17 @@ type RiotServer struct {
 	mux    *http.ServeMux
 }
 
-// NewRiotServer opens the store, runs migrations, builds the GraphQL schema and
-// the MCP tool surface, and wires both onto a single mux. It returns a
-// fully-wired server (or an error) — never a half-built one.
+// NewRiotServer opens the store, runs migrations, builds the GraphQL schema and the MCP tool surface, and wires both onto a single mux. It returns a fully-wired server (or an error) — never a half-built one.
 func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
+
 	config := RiotConfig{
 		Port:   utils.ResolvePort(),
 		GqlURL: "/graph",
 		McpURL: "/mcp",
 	}
+
+	config.applyEnvVars()
+
 	for _, option := range options {
 		if err := option(&config); err != nil {
 			return nil, err
@@ -180,4 +181,13 @@ func WithPlaygroundPath(value string) T.OptionerFn {
 		}
 		return nil
 	}
+}
+
+func (c *RiotConfig) applyEnvVars() error {
+
+	if os.Getenv("RIOT_GRAPHL_PLAYGROUND") != "" {
+		c.Playground = os.Getenv("RIOT_GRAPHL_PLAYGROUND")
+	}
+
+	return nil
 }
