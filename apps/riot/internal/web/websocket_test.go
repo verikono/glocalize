@@ -13,8 +13,7 @@ import (
 	"github.com/verikono/glocalize/apps/riot/internal/web"
 )
 
-// TestDispatchReachesWebsocketClient proves the dispatch path end to end: a
-// message handed to the web UI is written to a connected websocket client.
+// TestDispatchReachesWebsocketClient proves the dispatch path end to end: a message handed to the web UI is written to a connected websocket client.
 func TestDispatchReachesWebsocketClient(t *testing.T) {
 	ui, err := web.NewWebService()
 	if err != nil {
@@ -38,8 +37,7 @@ func TestDispatchReachesWebsocketClient(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Dispatch is queued and the client is registered asynchronously, so retry
-	// until the message lands rather than assuming ordering.
+	// Dispatch is queued and the client is registered asynchronously, so retry until the message lands rather than assuming ordering.
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		ui.Dispatch("riot::refresh")
