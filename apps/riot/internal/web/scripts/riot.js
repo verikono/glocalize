@@ -813,7 +813,11 @@ const skillTreeSvg = (el, label) => {
 // skillTreeFitAndZoom fits the viewBox to the drawn content, then wires wheel
 // zoom about the pointer and double-click to reset. The zoom is remembered on
 // the element, keyed by the tree it belongs to, so a resize keeps the view.
-const skillTreeFitAndZoom = (el, svg, treeData) => {
+//
+// options.fit selects the initial framing: "content" (the default) fits the
+// whole drawing into the stage; "width" fits the drawing's width to the stage
+// and anchors it at the top, which is what a tall, row-per-item drawing wants.
+const skillTreeFitAndZoom = (el, svg, treeData, options = {}) => {
     if (el.__skillTree !== treeData) el.__skillTreeZoom = null;
     el.__skillTree = treeData;
 
@@ -821,10 +825,26 @@ const skillTreeFitAndZoom = (el, svg, treeData) => {
     const pad = 8;
     const [bx, by, bw, bh] = [bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2];
 
+    // the stage's aspect ratio, used to keep the viewBox from letterboxing.
+    const stageWidth = Math.max(el.clientWidth || 0, 1);
+    const stageHeight = Math.max(el.clientHeight || 0, 1);
+    const aspect = stageHeight / stageWidth;
+
+    const baseView = () => {
+        if (options.fit !== "width") return [bx, by, bw, bh];
+        // the full width, and only as much height as the stage can show at
+        // that scale, anchored at the top of the drawing.
+        return [bx, by, bw, bw * aspect];
+    };
+
+    // the base view's own size, which the zoom is expressed against.
+    const [baseX, baseY, baseW, baseH] = baseView();
+    const baseCentre = { k: 1, cx: baseX + baseW / 2, cy: baseY + baseH / 2 };
+
     const viewFor = (zoom) => {
-        if (!zoom) return [bx, by, bw, bh];
+        if (!zoom) return baseView();
         const { k, cx, cy } = zoom;
-        return [cx - bw / (2 * k), cy - bh / (2 * k), bw / k, bh / k];
+        return [cx - baseW / (2 * k), cy - baseH / (2 * k), baseW / k, baseH / k];
     };
 
     const svgNode = svg.node();
@@ -841,7 +861,7 @@ const skillTreeFitAndZoom = (el, svg, treeData) => {
         if (!ctm) return;
         const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
 
-        const old = el.__skillTreeZoom || { k: 1, cx: bx + bw / 2, cy: by + bh / 2 };
+        const old = el.__skillTreeZoom || baseCentre;
         const k = Math.min(Math.max(old.k * Math.exp(-event.deltaY * 0.0015), MIN_K), MAX_K);
         if (k === old.k) return;
 
@@ -910,7 +930,7 @@ const skillTreeFitAndZoom = (el, svg, treeData) => {
         panStart = {
             x: event.clientX,
             y: event.clientY,
-            zoom: el.__skillTreeZoom || { k: 1, cx: bx + bw / 2, cy: by + bh / 2 },
+            zoom: el.__skillTreeZoom || baseCentre,
         };
         svgNode.classList.add("panning");
         svgNode.setPointerCapture?.(event.pointerId);
@@ -1283,6 +1303,9 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     const nameColumnWidth = 260;
     const rowPadding = 16;
     const minRowHeight = 36;
+    // the caption is absolutely positioned over the stage, so the rows start
+    // below it rather than underneath it.
+    const headerHeight = 26;
 
     const matches = (skill) => {
         const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
@@ -1317,7 +1340,7 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
 
     // lay every row out first: the tree's vertical extent decides the row's
     // height, and the rows are then stacked.
-    let cursorY = 0;
+    let cursorY = headerHeight;
     let maxDepth = 0;
     const layouts = rows.map((skill) => {
         const root = d3.hierarchy(buildRow(skill));
@@ -1458,8 +1481,10 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     el.appendChild(caption);
 
     // the zoom is keyed by the catalogue hierarchy, not the dependent one
-    // rebuilt here, so a resize redraw keeps the user's pan and zoom.
-    skillTreeFitAndZoom(el, svg, viewState.tree);
+    // rebuilt here, so a resize redraw keeps the user's pan and zoom. The
+    // drawing is tall and narrow, so it is fitted to the stage's width and
+    // anchored at the top rather than shrunk to fit the whole height.
+    skillTreeFitAndZoom(el, svg, viewState.tree, { fit: "width" });
 }
 
 // renderD3Missing reports a failed d3 load in place of a graph.

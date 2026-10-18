@@ -134,25 +134,6 @@ body {
     min-height: 0;
 }
 
-/* the focused-pillar view is drawn at 1:1 and scrolled rather than fitted, so
-   the stage becomes a scroll container and the svg keeps its pixel size. The
-   stage is pinned to #main's box: as a plain flex child it would grow to fit
-   the svg and scroll the whole page instead. The selector is scoped through
-   #main to outrank the `#main svg` rule above. */
-#main .viewstack-stage.scrolls {
-    position: absolute;
-    inset: 0;
-    overflow: auto;
-}
-
-#main .viewstack-stage.scrolls svg {
-    position: static;
-    inset: auto;
-    width: auto;
-    height: auto;
-    flex: none;
-}
-
 /* the name column of the focused-pillar view reads as the row's heading. */
 #main .pillar-name {
     font-weight: 600;
