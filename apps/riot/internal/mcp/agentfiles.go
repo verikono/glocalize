@@ -13,6 +13,11 @@ import (
 // agentFileSuffix is the suffix every mirrored agent file carries.
 const agentFileSuffix = ".agent.md"
 
+// agentCheckinLine is the sole body every mirrored agent file carries. It is
+// deliberately blunt: check in first, and if that cannot be done, stop dead
+// rather than working without an identity.
+const agentCheckinLine = "CHECKIN TO RIOT-MCP (tool: `agent-checkin`) AS THE AGENT NAMED IN THIS FILE'S `name` FRONTMATTER FIELD. DO THIS AS YOUR FIRST ACTION, BEFORE ANY OTHER TOOL CALL. IF RIOT-MCP IS NOT AVAILABLE, OR THE CHECK-IN FAILS FOR ANY REASON WHATSOEVER, TELL THE USER THAT RIOT-MCP IS UNAVAILABLE OR THAT CHECK-IN FAILED. THEN STOP: DO NOT PROCEED, DO NOT CALL ANY OTHER TOOL, AND WAIT FOR THE USER'S INSTRUCTIONS."
+
 // agentDir returns the configured agent directory, or "" when mirroring is off.
 func agentDir() string {
 	return utils.ResolveAgentDir()
@@ -80,7 +85,8 @@ func renderAgentFile(name, description, allowedTools string) (string, error) {
 		}
 	}
 	b.WriteString("---\n\n")
-	b.WriteString("CHECKIN TO RIOT-MCP WITH THIS AGENT NAME. IF RIOT-MCP IS NOT AVAILABLE INFORM THE USER IT IS NOT AVAILABLE.\n")
+	b.WriteString(agentCheckinLine)
+	b.WriteString("\n")
 	return b.String(), nil
 }
 

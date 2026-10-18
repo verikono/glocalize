@@ -19,8 +19,11 @@ func TestRenderAgentFile_WithTools(t *testing.T) {
 	if !strings.Contains(out, "allowed-tools:\n  - create-agent\n  - update-agent\n") {
 		t.Fatalf("missing allowed-tools block:\n%s", out)
 	}
-	if !strings.Contains(out, "CHECKIN TO RIOT-MCP WITH THIS AGENT NAME.") {
+	if !strings.Contains(out, agentCheckinLine) {
 		t.Fatalf("missing check-in directive:\n%s", out)
+	}
+	if !strings.Contains(out, "DO NOT PROCEED") {
+		t.Fatalf("check-in directive must forbid proceeding:\n%s", out)
 	}
 }
 
