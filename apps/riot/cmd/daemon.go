@@ -23,6 +23,20 @@ const (
 // StartRiot launches the server as a detached background process and returns
 // immediately. It is a no-op when a server is already listening on the port.
 func StartRiot(port int) error {
+	return startRiot(port, "")
+}
+
+// StartRiotHot launches the server detached with hot-reloading armed on the
+// resolved riot dev directory (RIOT_DEV_DIR, else the current directory).
+func StartRiotHot(port int) error {
+	devDir, err := utils.ResolveHotDir()
+	if err != nil {
+		return err
+	}
+	return startRiot(port, devDir)
+}
+
+func startRiot(port int, hotDir string) error {
 	if isRiotRunning(port) {
 		fmt.Println("riot: already running")
 		return nil
@@ -41,6 +55,9 @@ func StartRiot(port int) error {
 	defer logFile.Close()
 
 	child := exec.Command(exe, "serve", "--daemon", "--port", strconv.Itoa(port))
+	if hotDir != "" {
+		child.Env = withEnv(os.Environ(), utils.RiotDevDirEnv, hotDir)
+	}
 	child.Stdout = logFile
 	child.Stderr = logFile
 	child.Stdin = nil
@@ -53,26 +70,57 @@ func StartRiot(port int) error {
 		return fmt.Errorf("riot: release: %w", err)
 	}
 
-	fmt.Print(startBanner(pid, port, logPath))
+	hot := willRunHot(hotDir)
+
+	if err := saveRuntimeFlags(runtimeFlags{Port: port, Hot: hot, DevDir: hotDir}); err != nil {
+		return err
+	}
+
+	fmt.Print(startBanner(pid, port, logPath, hot))
 	return nil
 }
 
+// willRunHot reports whether the daemon child will arm hot reload: either hot
+// was requested directly or RIOT_DEV_DIR is inherited from the environment.
+func willRunHot(hotDir string) bool {
+	return hotDir != "" || os.Getenv(utils.RiotDevDirEnv) != ""
+}
+
+// withEnv returns env with key replaced by key=value, so the daemon child
+// inherits a single, authoritative value even when key is already present.
+func withEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, prefix+value)
+}
+
 // startBanner formats the success banner printed after a new daemon starts.
-func startBanner(pid, port int, logPath string) string {
+func startBanner(pid, port int, logPath string, hot bool) string {
 	base := fmt.Sprintf("http://localhost:%d", port)
-	return fmt.Sprintf(
-		"riot started\n"+
-			"%-12s : %s\n"+
-			"%-12s : %s\n"+
-			"%-12s : %s\n"+
-			"%-12s : %s\n"+
-			"%-12s : %s\n",
-		"pid", strconv.Itoa(pid),
-		"gql", base+"/graph",
-		"mcp", base+"/mcp",
-		"database", utils.ResolveDataURL(),
-		"logs", logPath,
-	)
+
+	lines := [][2]string{
+		{"pid", strconv.Itoa(pid)},
+		{"gql", base + "/graph"},
+		{"mcp", base + "/mcp"},
+		{"database", utils.ResolveDataURL()},
+	}
+	if hot {
+		lines = append(lines, [2]string{"hot", "yes (hot-reload armed)"})
+	}
+	lines = append(lines, [2]string{"logs", logPath})
+
+	var b strings.Builder
+	b.WriteString("riot started\n")
+	for _, line := range lines {
+		fmt.Fprintf(&b, "%-12s : %s\n", line[0], line[1])
+	}
+	return b.String()
 }
 
 // isRiotRunning reports whether anything is listening on 127.0.0.1:port.
@@ -83,6 +131,18 @@ func isRiotRunning(port int) bool {
 	}
 	_ = conn.Close()
 	return true
+}
+
+// waitPortFree waits until nothing is listening on port, or the timeout elapses.
+func waitPortFree(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isRiotRunning(port) {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return !isRiotRunning(port)
 }
 
 // RunningPid returns the pid of the running riot daemon, or an error.
