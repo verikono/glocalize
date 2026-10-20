@@ -55,13 +55,12 @@ func (m *RiotMcp) onLoadPackageContext(_ context.Context, request mcp.CallToolRe
 }
 
 // findPackageContext returns the guidance file that governs dir, or "" when
-// none is found. The directory itself is checked first; failing that, each
-// parent is checked until one holds both a guidance file and a package marker.
+// none is found. dir and each of its parents are checked in turn; a directory
+// is accepted only when it holds BOTH a guidance file and a package marker, so
+// a stray guidance file in a non-package directory is skipped rather than
+// returned.
 func findPackageContext(dir string) string {
-	if file := agentFileIn(dir); file != "" {
-		return file
-	}
-	for current := filepath.Dir(dir); ; current = filepath.Dir(current) {
+	for current := dir; ; current = filepath.Dir(current) {
 		if file := agentFileIn(current); file != "" && hasPackageMarker(current) {
 			return file
 		}

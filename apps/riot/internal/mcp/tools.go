@@ -247,7 +247,7 @@ var dropSkillReference = mcp.NewTool(
 
 var loadPackageContext = mcp.NewTool(
 	LoadPackageContextToolName,
-	mcp.WithDescription("Load the package guidance that governs a file or directory you are working in. The directory of the supplied path is checked for a `.agents.md` (or `agent.md`) file; failing that, parent directories are walked upward until one holds a guidance file AND a package marker (package.json, pyproject.toml, go.mod or cargo.toml). Returns the file's contents verbatim, or \"no information available\" when no such directory exists."),
+	mcp.WithDescription("Load the package guidance that governs a file or directory you are working in. The directory of the supplied path is checked for a `.agents.md` (or `agent.md`) file; failing that, parent directories are walked upward. A directory is accepted only when it holds BOTH a guidance file AND a package marker (package.json, pyproject.toml, go.mod or cargo.toml) — a guidance file in a directory with no marker is skipped. Returns the file's contents verbatim, or \"no information available\" when no such directory exists."),
 	mcp.WithString("path", mcp.Required(), mcp.Description("The absolute or relative path of the file or directory you are working in.")),
 )
 

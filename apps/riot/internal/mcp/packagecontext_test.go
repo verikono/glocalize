@@ -51,10 +51,11 @@ func TestLoadPackageContext_RiotAgentFile(t *testing.T) {
 }
 
 // TestLoadPackageContext_DirectAgentFile proves a guidance file in the target
-// directory wins without requiring a package marker.
+// directory is returned when that directory is also a package root.
 func TestLoadPackageContext_DirectAgentFile(t *testing.T) {
 	server := newTestMcp(t)
 	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "go.mod"), "module example.com/x\n")
 	writeFile(t, filepath.Join(dir, ".agents.md"), "direct guidance")
 
 	result := call(t, server.onLoadPackageContext, map[string]any{"path": dir})
@@ -63,6 +64,25 @@ func TestLoadPackageContext_DirectAgentFile(t *testing.T) {
 	}
 	if got := resultText(t, result); got != "direct guidance" {
 		t.Fatalf("got %q, want %q", got, "direct guidance")
+	}
+}
+
+// TestLoadPackageContext_SkipsMarkerlessStartDir proves a guidance file in the
+// starting directory is skipped when that directory holds no package marker,
+// and resolution continues upward to the nearest real package root.
+func TestLoadPackageContext_SkipsMarkerlessStartDir(t *testing.T) {
+	server := newTestMcp(t)
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module example.com/x\n")
+	writeFile(t, filepath.Join(root, ".agents.md"), "package guidance")
+	writeFile(t, filepath.Join(root, "sub", ".agents.md"), "stray guidance")
+
+	result := call(t, server.onLoadPackageContext, map[string]any{"path": filepath.Join(root, "sub")})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", resultText(t, result))
+	}
+	if got := resultText(t, result); got != "package guidance" {
+		t.Fatalf("got %q, want %q", got, "package guidance")
 	}
 }
 
