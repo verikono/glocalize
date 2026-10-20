@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,7 +45,15 @@ func (m *RiotMcp) onAgentCheckin(ctx context.Context, request mcp.CallToolReques
 		return errorResult(fmt.Errorf("agent-checkin: %w", err)), nil
 	}
 	if agent == nil {
-		agent, err = m.db.Agent.Create().SetName(agentName).SetDescription(agentName).SetAllowedTools("[]").SetMetadata("{}").Exec(ctx)
+		err = m.db.Transaction(ctx, func(tx *orm.Tx) error {
+			created, err := tx.Agent.Create().SetName(agentName).SetDescription(agentName).SetAllowedTools("[]").SetMetadata("{}").Exec(ctx)
+			if err != nil {
+				return err
+			}
+			agent = created
+			_, err = bindDefaultSkills(ctx, tx, created.Id)
+			return err
+		})
 		if err != nil {
 			return errorResult(fmt.Errorf("agent-checkin: %w", err)), nil
 		}
@@ -69,9 +78,36 @@ type boundSkill struct {
 	Name        string
 	Description string
 	Priority    orm.PriorityType
+	// Via names the skill that pulled this one in as a dependency. It is empty
+	// for skills bound to the agent directly.
+	Via string
 }
 
-func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill, error) {
+// priorityRank orders priorities from most to least essential.
+func priorityRank(p orm.PriorityType) int {
+	switch p {
+	case orm.Priority_ESSENTIAL:
+		return 0
+	case orm.Priority_HIGH:
+		return 1
+	case orm.Priority_NORMAL:
+		return 2
+	case orm.Priority_LOW:
+		return 3
+	}
+	return 4
+}
+
+// maxPriority returns the more essential of two priorities.
+func maxPriority(a, b orm.PriorityType) orm.PriorityType {
+	if priorityRank(a) <= priorityRank(b) {
+		return a
+	}
+	return b
+}
+
+// directSkills returns only the skills bound to the agent in AgentSkill.
+func (m *RiotMcp) directSkills(ctx context.Context, agentID string) ([]boundSkill, error) {
 	rows, err := m.db.AgentSkill.FindMany(eq[orm.AgentSkill, string]("agentId", agentID)).Exec(ctx)
 	if err != nil {
 		return nil, err
@@ -90,6 +126,88 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 	return skills, nil
 }
 
+// boundSkills returns the skills bound to an agent together with the transitive
+// closure of their dependencies, so an agent is never handed a skill whose
+// prerequisites it has not been told to load. A dependency inherits the most
+// essential priority of the skills that require it: a dependency of an
+// ESSENTIAL skill is itself ESSENTIAL and must be loaded first.
+func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill, error) {
+	direct, err := m.directSkills(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+
+	byName := make(map[string]*boundSkill, len(direct))
+	order := make([]string, 0, len(direct))
+	for i := range direct {
+		s := direct[i]
+		if existing, ok := byName[s.Name]; ok {
+			existing.Priority = maxPriority(existing.Priority, s.Priority)
+			continue
+		}
+		byName[s.Name] = &s
+		order = append(order, s.Name)
+	}
+
+	// Breadth-first expansion over SkillDependency, cycle-safe.
+	frontier := make([]string, 0, len(order))
+	frontier = append(frontier, order...)
+	visited := make(map[string]struct{}, len(order))
+	for _, name := range order {
+		visited[name] = struct{}{}
+	}
+
+	for len(frontier) > 0 {
+		parentName := frontier[0]
+		frontier = frontier[1:]
+		parent, ok := byName[parentName]
+		if !ok {
+			continue
+		}
+		parentSkill, err := m.skillByName(ctx, parentName)
+		if err != nil {
+			return nil, err
+		}
+		if parentSkill == nil {
+			continue
+		}
+		deps, err := m.db.SkillDependency.FindMany(eq[orm.SkillDependency, string]("dependentId", parentSkill.Id)).Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, dep := range deps {
+			depSkill, err := m.skillByID(ctx, dep.DependencyId)
+			if err != nil {
+				return nil, err
+			}
+			if depSkill == nil {
+				continue
+			}
+			if existing, ok := byName[depSkill.Name]; ok {
+				existing.Priority = maxPriority(existing.Priority, parent.Priority)
+				continue
+			}
+			byName[depSkill.Name] = &boundSkill{
+				Name:        depSkill.Name,
+				Description: depSkill.Description,
+				Priority:    parent.Priority,
+				Via:         parentName,
+			}
+			order = append(order, depSkill.Name)
+			if _, seen := visited[depSkill.Name]; !seen {
+				visited[depSkill.Name] = struct{}{}
+				frontier = append(frontier, depSkill.Name)
+			}
+		}
+	}
+
+	out := make([]boundSkill, 0, len(order))
+	for _, name := range order {
+		out = append(out, *byName[name])
+	}
+	return out, nil
+}
+
 func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", name)
@@ -98,16 +216,8 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 	fmt.Fprintf(&b, "- You are **%s**, agent id `%s`, working in project **%s**.\n", name, id, project)
 	fmt.Fprintf(&b, "- add your agentid as a request header on every MCP call to this mcp service.\n")
 	fmt.Fprintf(&b, "- consume a skill with the get-skill tool — it takes priority over every other mechanism.\n")
-	fmt.Fprintf(&b, "- load every ESSENTIAL skill bound to you before any other work.\n\n")
-
-	buckets := map[orm.PriorityType][]boundSkill{}
-	var order []orm.PriorityType
-	for _, s := range skills {
-		if _, ok := buckets[s.Priority]; !ok {
-			order = append(order, s.Priority)
-		}
-		buckets[s.Priority] = append(buckets[s.Priority], s)
-	}
+	fmt.Fprintf(&b, "- load every ESSENTIAL skill bound to you before any other work.\n")
+	fmt.Fprintf(&b, "- skills marked _(required by …)_ are dependencies of a bound skill and must be loaded too.\n\n")
 
 	if len(skills) == 0 {
 		b.WriteString("## Skills\n\n_no skills bound yet_\n")
@@ -121,9 +231,31 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 		orm.Priority_NORMAL:    "NORMAL — you will likely need these",
 		orm.Priority_LOW:       "LOW — be aware they exist",
 	}
-	for _, p := range order {
+	// Fixed order: the document must always list ESSENTIAL first, whatever
+	// order the rows came back in.
+	for _, p := range []orm.PriorityType{orm.Priority_ESSENTIAL, orm.Priority_HIGH, orm.Priority_NORMAL, orm.Priority_LOW} {
+		bucket := make([]boundSkill, 0, len(skills))
+		for _, s := range skills {
+			if s.Priority == p {
+				bucket = append(bucket, s)
+			}
+		}
+		if len(bucket) == 0 {
+			continue
+		}
+		sort.SliceStable(bucket, func(i, j int) bool {
+			directI, directJ := bucket[i].Via == "", bucket[j].Via == ""
+			if directI != directJ {
+				return directI
+			}
+			return bucket[i].Name < bucket[j].Name
+		})
 		fmt.Fprintf(&b, "### %s\n", labels[p])
-		for _, s := range buckets[p] {
+		for _, s := range bucket {
+			if s.Via != "" {
+				fmt.Fprintf(&b, "- **%s** — %s _(required by %s)_\n", s.Name, s.Description, s.Via)
+				continue
+			}
 			fmt.Fprintf(&b, "- **%s** — %s\n", s.Name, s.Description)
 		}
 		b.WriteString("\n")
@@ -684,6 +816,42 @@ func stringValue(v any) string {
 	return ""
 }
 
+// defaultAgentSkillName is the skill every new agent is bound to. It carries
+// the communication, honesty and estimation protocol that applies to any agent
+// participating in a session, so it is bound as ESSENTIAL rather than left to
+// the caller to remember.
+const defaultAgentSkillName = "participating-agent"
+
+// bindDefaultSkills binds the default skill set to a freshly created agent at
+// ESSENTIAL priority. A missing default skill is not an error: the agent is
+// still created, and the caller is told which defaults were skipped.
+func bindDefaultSkills(ctx context.Context, tx *orm.Tx, agentID string) ([]string, error) {
+	skill, err := tx.Skill.FindFirst(eq[orm.Skill, string]("name", defaultAgentSkillName)).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if skill == nil {
+		return []string{defaultAgentSkillName}, nil
+	}
+	existing, err := tx.AgentSkill.FindFirst(
+		eq[orm.AgentSkill, string]("agentId", agentID),
+		eq[orm.AgentSkill, string]("skillId", skill.Id),
+	).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		if _, err := tx.AgentSkill.Update(unique[orm.AgentSkill]("agentId", agentID), eq[orm.AgentSkill, string]("skillId", skill.Id)).SetPriority(orm.Priority_ESSENTIAL).Exec(ctx); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if _, err := tx.AgentSkill.Create().SetAgentId(agentID).SetSkillId(skill.Id).SetPriority(orm.Priority_ESSENTIAL).Exec(ctx); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 // firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
@@ -714,12 +882,29 @@ func (m *RiotMcp) onCreateAgent(ctx context.Context, request mcp.CallToolRequest
 	if metadata == "" {
 		metadata = "{}"
 	}
-	agent, err := m.db.Agent.Create().SetName(name).SetDescription(description).SetAllowedTools(allowedTools).SetMetadata(metadata).Exec(ctx)
+	var agent *orm.Agent
+	var skipped []string
+	err := m.db.Transaction(ctx, func(tx *orm.Tx) error {
+		created, err := tx.Agent.Create().SetName(name).SetDescription(description).SetAllowedTools(allowedTools).SetMetadata(metadata).Exec(ctx)
+		if err != nil {
+			return err
+		}
+		agent = created
+		skipped, err = bindDefaultSkills(ctx, tx, created.Id)
+		return err
+	})
 	if err != nil {
 		return errorResult(fmt.Errorf("create-agent: %w", err)), nil
 	}
 	if err := writeAgentFile(agent.Name, agent.Description, agent.AllowedTools); err != nil {
 		return errorResult(fmt.Errorf("create-agent: %w", err)), nil
+	}
+	if len(skipped) > 0 {
+		return jsonResult(map[string]any{
+			"agent":           agent,
+			"skippedDefaults": skipped,
+			"warning":         fmt.Sprintf("default skill(s) %s not found; bind them with associate-agent-skill once they exist", strings.Join(skipped, ", ")),
+		})
 	}
 	return jsonResult(agent)
 }
