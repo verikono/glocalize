@@ -51,6 +51,8 @@ const (
 	AssociateSkillReferenceToolName = "associate-skill-reference"
 	// DropSkillReferenceToolName detaches a reference from a skill.
 	DropSkillReferenceToolName = "drop-skill-reference"
+	// LoadPackageContextToolName returns the package guidance for a path.
+	LoadPackageContextToolName = "load-package-context"
 )
 
 const priorityVocabulary = "LOW, NORMAL, HIGH, ESSENTIAL (least to most essential)"
@@ -241,6 +243,12 @@ var dropSkillReference = mcp.NewTool(
 	mcp.WithDescription("Detach a reference from a skill WITHOUT deleting the reference: only the link is removed. Detaching a pair that was never linked is a no-op. Use drop-reference to remove the reference itself."),
 	mcp.WithString("skill", mcp.Required(), mcp.Description("The skill to detach the reference from, by name.")),
 	mcp.WithString("reference", mcp.Required(), mcp.Description("The reference to detach, by name.")),
+)
+
+var loadPackageContext = mcp.NewTool(
+	LoadPackageContextToolName,
+	mcp.WithDescription("Load the package guidance that governs a file or directory you are working in. The directory of the supplied path is checked for a `.agents.md` (or `agent.md`) file; failing that, parent directories are walked upward until one holds a guidance file AND a package marker (package.json, pyproject.toml, go.mod or cargo.toml). Returns the file's contents verbatim, or \"no information available\" when no such directory exists."),
+	mcp.WithString("path", mcp.Required(), mcp.Description("The absolute or relative path of the file or directory you are working in.")),
 )
 
 // helpers

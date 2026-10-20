@@ -95,4 +95,5 @@ func (m *RiotMcp) registerTools() {
 	m.server.AddTool(dropReference, m.onDropReference)
 	m.server.AddTool(associateSkillReference, m.onAssociateSkillReference)
 	m.server.AddTool(dropSkillReference, m.onDropSkillReference)
+	m.server.AddTool(loadPackageContext, m.onLoadPackageContext)
 }
