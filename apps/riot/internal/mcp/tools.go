@@ -181,7 +181,7 @@ var mutateSkill = mcp.NewTool(
 
 var createAgent = mcp.NewTool(
 	CreateAgentToolName,
-	mcp.WithDescription("Create a new agent. The name is the identity and must be unique; creating a second agent with the same name is rejected. allowed-tools is a JSON-encoded array and metadata a JSON-encoded object; both default to [] and {} when omitted."),
+	mcp.WithDescription("Create a new agent. The name is the identity and must be unique; creating a second agent with the same name is rejected. Every new agent is automatically bound to the `participating-agent` skill at ESSENTIAL priority — the communication, honesty and estimation protocol every agent must follow — so there is no need to associate it yourself. allowed-tools is a JSON-encoded array and metadata a JSON-encoded object; both default to [] and {} when omitted. When the default skill does not exist the agent is still created and the result carries a `skippedDefaults` list plus a `warning`."),
 	mcp.WithString("name", mcp.Required(), mcp.Description("The agent's name, unique across agents, e.g. \"McpikonArchitect\".")),
 	mcp.WithString("description", mcp.Required(), mcp.Description("A one-line summary of what the agent does.")),
 	mcp.WithString("allowed-tools", mcp.Description("Optional JSON-encoded array of allowed tool names. Defaults to [].")),

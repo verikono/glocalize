@@ -899,14 +899,20 @@ func (m *RiotMcp) onCreateAgent(ctx context.Context, request mcp.CallToolRequest
 	if err := writeAgentFile(agent.Name, agent.Description, agent.AllowedTools); err != nil {
 		return errorResult(fmt.Errorf("create-agent: %w", err)), nil
 	}
+	result, err := jsonResult(agent)
+	if err != nil {
+		return nil, err
+	}
+	// The agent record is always the first block, so the shape a consumer
+	// parses never changes. A missing default skill is reported alongside it
+	// rather than folded into the record.
 	if len(skipped) > 0 {
-		return jsonResult(map[string]any{
-			"agent":           agent,
-			"skippedDefaults": skipped,
-			"warning":         fmt.Sprintf("default skill(s) %s not found; bind them with associate-agent-skill once they exist", strings.Join(skipped, ", ")),
+		result.Content = append(result.Content, mcp.TextContent{
+			Type: "text",
+			Text: fmt.Sprintf("warning: default skill(s) %s not found; bind them with associate-agent-skill once they exist", strings.Join(skipped, ", ")),
 		})
 	}
-	return jsonResult(agent)
+	return result, nil
 }
 
 func (m *RiotMcp) onUpdateAgent(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
