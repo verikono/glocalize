@@ -16,6 +16,8 @@ const (
 	AgentCheckinToolName = "agent-checkin"
 	// GetAgentManifestToolName summarises the agent roster.
 	GetAgentManifestToolName = "get-agent-manifest"
+	// ListAgentsToolName lists full agent records, optionally filtered by project.
+	ListAgentsToolName = "list-agents"
 	// GetProjectsToolName lists the project allow-list.
 	GetProjectsToolName = "get-projects"
 	// ListSkillsToolName lists the skill catalogue.
@@ -69,6 +71,15 @@ var agentCheckin = mcp.NewTool(
 var getAgentManifest = mcp.NewTool(
 	GetAgentManifestToolName,
 	mcp.WithDescription("retrieve a summary of every available agent"),
+)
+
+var listAgents = mcp.NewTool(
+	ListAgentsToolName,
+	mcp.WithDescription("List agent records as a JSON array, each carrying name, id, description, metadata (decoded from its stored JSON string into real JSON) and the names of the skills bound to it. Pass `project` to narrow the list to agents associated with any of the named projects; omit it to list every agent. Agents are ordered by name."),
+	mcp.WithArray("project",
+		mcp.WithStringItems(),
+		mcp.Description("Optional project names. When provided, only agents associated with a project in this list are returned."),
+	),
 )
 
 var getProjects = mcp.NewTool(

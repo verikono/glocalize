@@ -78,6 +78,7 @@ func (m *RiotMcp) Handler() http.Handler {
 func (m *RiotMcp) registerTools() {
 	m.server.AddTool(agentCheckin, m.onAgentCheckin)
 	m.server.AddTool(getAgentManifest, m.onGetAgentManifest)
+	m.server.AddTool(listAgents, m.onListAgents)
 	m.server.AddTool(getProjects, m.onGetProjects)
 	m.server.AddTool(listSkills, m.onListSkills)
 	m.server.AddTool(getSkill, m.onGetSkill)

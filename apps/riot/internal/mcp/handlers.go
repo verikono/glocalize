@@ -159,6 +159,102 @@ func (m *RiotMcp) onGetProjects(ctx context.Context, _ mcp.CallToolRequest) (*mc
 	return jsonResult(names)
 }
 
+// agentSummary is one agent as list-agents reports it: metadata is decoded
+// from its stored JSON string so consumers receive real JSON.
+type agentSummary struct {
+	Name        string          `json:"name"`
+	Id          string          `json:"id"`
+	Description string          `json:"description"`
+	Metadata    json.RawMessage `json:"metadata"`
+	Skills      []agentSkillRef `json:"skills"`
+}
+
+// agentSkillRef names one skill bound to an agent.
+type agentSkillRef struct {
+	Name string `json:"name"`
+}
+
+func (m *RiotMcp) onListAgents(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	projects := stringSlice(args["project"])
+
+	records, err := m.db.Agent.FindMany().OrderBy(orm.Field[orm.Agent, string]{Column: "name"}.Asc()).Exec(ctx)
+	if err != nil {
+		return errorResult(fmt.Errorf("list-agents: %w", err)), nil
+	}
+
+	if len(projects) > 0 {
+		allowed, err := m.agentIDsForProjects(ctx, projects)
+		if err != nil {
+			return errorResult(fmt.Errorf("list-agents: %w", err)), nil
+		}
+		filtered := make([]*orm.Agent, 0, len(records))
+		for _, r := range records {
+			if _, ok := allowed[r.Id]; ok {
+				filtered = append(filtered, r)
+			}
+		}
+		records = filtered
+	}
+
+	out := make([]agentSummary, 0, len(records))
+	for _, r := range records {
+		skills, err := m.boundSkills(ctx, r.Id)
+		if err != nil {
+			return errorResult(fmt.Errorf("list-agents: %w", err)), nil
+		}
+		refs := make([]agentSkillRef, 0, len(skills))
+		for _, s := range skills {
+			refs = append(refs, agentSkillRef{Name: s.Name})
+		}
+		out = append(out, agentSummary{
+			Name:        r.Name,
+			Id:          r.Id,
+			Description: r.Description,
+			Metadata:    decodeMetadata(r.Metadata),
+			Skills:      refs,
+		})
+	}
+	return jsonResult(out)
+}
+
+// agentIDsForProjects returns the set of agent ids associated with any of the
+// named projects, read from the _ProjectAgents join table.
+func (m *RiotMcp) agentIDsForProjects(ctx context.Context, projects []string) (map[string]struct{}, error) {
+	query := `SELECT "agentId", "projectName" FROM "_ProjectAgents"`
+	rows, err := m.db.Raw().QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	wanted := make(map[string]struct{}, len(projects))
+	for _, p := range projects {
+		wanted[p] = struct{}{}
+	}
+	out := map[string]struct{}{}
+	for rows.Next() {
+		var agentID, projectName string
+		if err := rows.Scan(&agentID, &projectName); err != nil {
+			return nil, err
+		}
+		if _, ok := wanted[projectName]; ok {
+			out[agentID] = struct{}{}
+		}
+	}
+	return out, rows.Err()
+}
+
+// decodeMetadata turns a stored metadata JSON string into raw JSON, falling
+// back to an empty object when the stored value is blank or not valid JSON.
+func decodeMetadata(raw string) json.RawMessage {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || !json.Valid([]byte(trimmed)) {
+		return json.RawMessage("{}")
+	}
+	return json.RawMessage(trimmed)
+}
+
 func (m *RiotMcp) onListSkills(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	records, err := m.db.Skill.FindMany().OrderBy(orm.Field[orm.Skill, time.Time]{Column: "createdAt"}.Desc()).Exec(ctx)
 	if err != nil {
