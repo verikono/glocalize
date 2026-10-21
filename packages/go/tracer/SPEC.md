@@ -12,6 +12,19 @@ value | value | included
 
 `details` an optional list of extra lines a package may produce in any quantity. A detail is written as an indented line beneath its log and is shown only when the log is focused.
 
+> **Implementation note.** The prose above and the table disagree: `^jimbo*` is unprefixed, yet it only matches under regex semantics. The table is the acceptance criterion, so **every** needle is compiled as a case-insensitive regex; a leading `/` is stripped first, and a needle that will not compile falls back to a literal substring match. The needle is matched against every field of a log: timestamp, level, origin, message and each detail line.
+
+# Logger
+`tracer.NewLogger(origin, out)` writes tracer-native lines for one package. Each entry is a header line followed by one indented line per detail:
+
+```
+2026/10/21 14:13:40.709 trace [orm] sql query
+	SELECT * FROM "Project" WHERE "name" = ?
+	args: [all]
+```
+
+A message containing newlines is flattened onto one line, because a message is by definition concise and a newline would break the header. A detail containing newlines is split, so every physical line stays indented and parses back as a detail. A `Logger` is safe for concurrent use.
+
 # TUI - full screen utility application run in bash
 ## Formatting:
 keep it really simple %t = time, %l = loglevel, %m = message, %o = origin so:

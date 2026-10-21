@@ -7,10 +7,11 @@ import (
 
 // TracerLogFilter narrows a log stream by time window, level and needle.
 //
-// A needle is a plain substring match against every field of a log (time,
-// level, origin, message and details) unless it begins with "/", in which case
-// the remainder is compiled as a regular expression. Matching is
-// case-insensitive either way.
+// A needle is matched against every field of a log: its timestamp, level,
+// origin, message and each detail line. Every needle is compiled as a
+// case-insensitive regular expression, so "^jimbo" anchors and "unk" matches
+// anywhere; a leading "/" is stripped first, and a needle that will not compile
+// falls back to a literal substring match. (see SPEC.md)
 type TracerLogFilter struct {
 	start  EpochSeconds
 	end    EpochSeconds

@@ -8,8 +8,12 @@ import (
 type LogLevel string   // loglevel as a string "info", "warn" etc
 type LogMessage string // a message for the logged event
 
+// ReadableTracerLog is the read seam a tracer exposes: the whole buffer, the
+// filtered view, and the ability to change the filter. Logs is unfiltered;
+// Visible applies the current filter.
 type ReadableTracerLog interface {
-	GetLogs(options ...OptionerFn) ([]TracerLogInterface, error)
+	Logs() []TracerLogInterface
+	Visible() []TracerLogInterface
 	SetLogFilter(options ...OptionerFn) ([]TracerLogInterface, error)
 }
 
