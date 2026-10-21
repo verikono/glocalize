@@ -11,7 +11,7 @@ import (
 	T "github.com/verikono/glocalize/types/go"
 )
 
-// Document Base struct - pairs to routes - eg Request("/chart/") <- RiotWebUi
+// Document Base struct - pairs to routes - eg Request("/skills/") <- RiotWebUi
 type RiotWebUi struct {
 	route    T.UrlPath
 	styles   map[T.UrlPath]StyleSheet
@@ -40,7 +40,7 @@ func (rw *RiotWebUi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rw.Render(w, r)
 }
 
-// isUiPath reports whether path is the document route ("/chart" or any path beneath it).
+// isUiPath reports whether path is the document route ("/skills" or any path beneath it).
 func (rw *RiotWebUi) isUiPath(path string) bool {
 	return path == strings.TrimSuffix(rw.route, "/") || strings.HasPrefix(path, rw.route)
 }

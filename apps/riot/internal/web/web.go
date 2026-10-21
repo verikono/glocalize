@@ -5,10 +5,10 @@ import (
 	"net/http"
 )
 
-// NewWebService builds the shared riot web UI: the /chart route, its body sections, and the in-memory style and script content.
+// NewWebService builds the shared riot web UI: the /skills route, its body sections, and the in-memory style and script content.
 func NewWebService() (*RiotWebUi, error) {
 	ui := &RiotWebUi{
-		route: "/chart/",
+		route: "/skills/",
 		sections: []RiotWebSection{
 			{
 				name:     "navigation",

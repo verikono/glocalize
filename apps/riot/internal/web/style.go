@@ -17,8 +17,8 @@ var StyleSheets = map[T.UrlPath]StyleSheet{
 
 type StyleSheet struct {
 	name    SheetName        // eg "main"
-	urlPath T.UrlPath        // eg "/chart/main.style.css"
-	route   T.UrlPath        // eg "/chart/" -- when set to "*", loads into every route
+	urlPath T.UrlPath        // eg "/skills/main.style.css"
+	route   T.UrlPath        // eg "/skills/" -- when set to "*", loads into every route
 	path    RelativeFilePath // eg "./style/main.css"
 	content CssContent
 	RoutedStaticContent

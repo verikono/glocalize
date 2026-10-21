@@ -40,7 +40,7 @@ func TestStylesheetServedAsFile(t *testing.T) {
 		t.Fatalf("content-length = %d, want > 0", resp.ContentLength)
 	}
 
-	doc, err := http.Get(server.URL + "/chart/")
+	doc, err := http.Get(server.URL + "/skills/")
 	if err != nil {
 		t.Fatalf("get document: %v", err)
 	}
