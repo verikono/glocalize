@@ -168,23 +168,22 @@ body {
 }
 
 /* the graph stage holds the agent's skill tree. It is the flex child that
-   grows, so the tree fills whatever height the heading leaves. */
+   grows, and it scrolls: the tree is drawn at 1:1 so its labels keep their
+   stated pixel size however large the drawing gets. */
 .agent-graph {
     flex: 1;
     min-height: 0;
     position: relative;
     margin-top: 12px;
+    overflow: auto;
 }
 
-/* the tree svg is absolutely positioned because an svg with a viewBox has an
-   intrinsic aspect ratio that would otherwise force the flex container to grow
-   past the viewport. */
+/* the svg is sized to the drawing in pixels, so it scrolls rather than
+   scaling. flex: none stops the global `display: flex` rule from shrinking it
+   to the stage's width, which would defeat the scroll. */
 .agent-graph svg {
     display: block;
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    flex: none;
     color: rgb(37, 37, 37);
 }
 
@@ -192,29 +191,27 @@ body {
     display: inline;
 }
 
-/* middle-mouse drag pans the graph; the cursor shows the grab state. */
-.agent-graph svg.panning {
-    cursor: grabbing;
-}
-
 /* the agent's own node is the tree's heading, so it reads heavier than the
-   skills beneath it. */
+   skills beneath it. Its size is set on the text element, at 150% of a skill
+   label. */
 .agent-graph .agent-root text {
     font-weight: 600;
-    font-size: 12px;
 }
 
 .agent-graph .node.active text {
     fill: rgb(200, 60, 60);
 }
 
-/* the caption sits at the bottom left, clear of the tree's root node which
-   occupies the stage's top left. */
+/* the caption is pinned to the stage's bottom left, clear of the tree's root
+   node which occupies the top left. */
 .agent-graph .caption {
-    position: absolute;
+    position: sticky;
     bottom: 0;
     left: 0;
     font-family: sans-serif;
     font-size: 11px;
     color: rgb(110, 110, 110);
+    background: rgb(255, 255, 255);
+    padding: 2px 4px;
+    width: fit-content;
 }

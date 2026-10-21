@@ -193,12 +193,18 @@
 			return;
 		}
 
-		var fontSize = 16;
-		var rowHeight = 32;
+		// the skill label size, and the agent's name at 150% of it.
+		var SKILL_FONT_PX = 12;
+		var ROOT_FONT_PX = SKILL_FONT_PX * 1.5;
 
-		// the gap between a label's right edge and the next column's node: the
-		// node circle plus breathing room.
-		var labelGap = 26;
+		// the agent's name starts here, leaving room above and to its left.
+		var ORIGIN_X = 100;
+		var ORIGIN_Y = 100;
+
+		// the gap between a label's right edge and the next column's node, and
+		// the gap between one row's text and the next.
+		var LABEL_GAP = 26;
+		var ROW_GAP = 8;
 
 		var root = d3.hierarchy(tree);
 
@@ -212,7 +218,6 @@
 
 		var svg = d3.select(stage)
 			.append("svg")
-			.attr("preserveAspectRatio", "xMinYMin meet")
 			.attr("role", "img")
 			.attr("aria-label", "tree of " + agent.name + "'s skills and their dependencies");
 
@@ -246,8 +251,8 @@
 			});
 
 		// pass one: draw every label in full and measure it. Nothing is truncated
-		// and nothing is estimated; the rendered width is what the columns are
-		// allocated from.
+		// and nothing is estimated; the rendered width and height are what the
+		// columns and rows are allocated from.
 		node.append("text")
 			.attr("dy", "0.31em")
 			.attr("x", 8)
@@ -255,26 +260,35 @@
 			.attr("stroke", "#fff")
 			.attr("stroke-width", 3)
 			.attr("stroke-linejoin", "round")
-			.attr("font-size", fontSize)
 			.attr("font-family", "sans-serif")
+			.attr("font-size", function (d) {
+				return d.depth === 0 ? ROOT_FONT_PX : SKILL_FONT_PX;
+			})
 			.text(function (d) {
 				return d.data.name;
 			});
 
+		// the row height comes from the measured height of a skill label, so the
+		// rows are spaced by the font that is actually rendered.
+		var skillFontHeight = SKILL_FONT_PX;
 		node.each(function (d) {
-			d.labelWidth = this.querySelector("text").getComputedTextLength();
+			var text = this.querySelector("text");
+			d.labelWidth = text.getComputedTextLength();
+			if (d.depth > 0) skillFontHeight = text.getBBox().height;
 		});
+
+		var rowHeight = skillFontHeight + ROW_GAP;
 
 		// pass two: a column is as wide as its widest label plus the gap, and the
 		// columns are laid out end to end from those measured widths.
 		var columnWidth = [];
 		root.each(function (d) {
-			var width = d.labelWidth + labelGap;
+			var width = d.labelWidth + LABEL_GAP;
 			columnWidth[d.depth] = Math.max(columnWidth[d.depth] || 0, width);
 		});
 
 		var columnX = [];
-		var offset = 0;
+		var offset = ORIGIN_X;
 		for (var depth = 0; depth < columnWidth.length; depth++) {
 			columnX[depth] = offset;
 			offset += columnWidth[depth];
@@ -285,7 +299,7 @@
 		};
 
 		var posY = function (d) {
-			return d.row * rowHeight;
+			return ORIGIN_Y + d.row * rowHeight;
 		};
 
 		node.attr("transform", function (d) {
@@ -327,114 +341,23 @@
 			node.classed("active", false);
 		});
 
+		// the svg is sized to the drawing at 1:1, so the labels render at their
+		// stated pixel size and the stage scrolls whatever does not fit.
+		var bounds = svg.node().getBBox();
+		var width = Math.ceil(bounds.x + bounds.width + ORIGIN_X);
+		var height = Math.ceil(bounds.y + bounds.height + ORIGIN_Y);
+		svg.attr("width", width).attr("height", height).attr("viewBox", "0 0 " + width + " " + height);
+
 		var caption = document.createElement("p");
 		caption.className = "caption";
 		caption.textContent = (root.descendants().length - 1) + " skills · " + root.leaves().length + " leaves";
 		stage.appendChild(caption);
-
-		fitAndZoom(stage, svg);
-	};
-
-	// fitAndZoom fits the viewBox to the drawn content, then wires wheel zoom
-	// about the pointer, middle-drag pan and double-click to reset. The home
-	// view fits the whole tree, so no branch is ever hidden on load; the wheel
-	// zooms in to read a label.
-	var fitAndZoom = function (stage, svg) {
-		var bounds = svg.node().getBBox();
-		var pad = 12;
-		var baseView = [bounds.x - pad, bounds.y - pad, bounds.width + pad * 2, bounds.height + pad * 2];
-
-		var home = { k: 1, cx: baseView[0] + baseView[2] / 2, cy: baseView[1] + baseView[3] / 2 };
-		var zoom = home;
-
-		var viewFor = function (z) {
-			return [z.cx - baseView[2] / (2 * z.k), z.cy - baseView[3] / (2 * z.k), baseView[2] / z.k, baseView[3] / z.k];
-		};
-
-		var svgNode = svg.node();
-		svg.attr("viewBox", viewFor(zoom).join(" "));
-
-		svgNode.addEventListener("wheel", function (event) {
-			event.preventDefault();
-
-			var ctm = svgNode.getScreenCTM();
-			if (!ctm) return;
-			var point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
-
-			var k = Math.min(Math.max(zoom.k * Math.exp(-event.deltaY * 0.0015), 0.4), 12);
-			if (k === zoom.k) return;
-
-			var ratio = zoom.k / k;
-			zoom = {
-				k: k,
-				cx: point.x + (zoom.cx - point.x) * ratio,
-				cy: point.y + (zoom.cy - point.y) * ratio,
-			};
-			svg.attr("viewBox", viewFor(zoom).join(" "));
-		}, { passive: false });
-
-		svgNode.addEventListener("dblclick", function (event) {
-			if (event.target !== svgNode) return;
-			zoom = home;
-			svg.attr("viewBox", viewFor(zoom).join(" "));
-		});
-
-		// middle-mouse drag pans the view, complementing the wheel zoom.
-		var panning = false;
-		var panStart = null;
-
-		var onPanMove = function (event) {
-			if (!panning || !panStart) return;
-			event.preventDefault();
-
-			var ctm = svgNode.getScreenCTM();
-			if (!ctm) return;
-			var inv = ctm.inverse();
-
-			var dx = event.clientX - panStart.x;
-			var dy = event.clientY - panStart.y;
-			var baseDx = inv.a * dx + inv.c * dy;
-			var baseDy = inv.b * dx + inv.d * dy;
-
-			zoom = { k: panStart.zoom.k, cx: panStart.zoom.cx - baseDx, cy: panStart.zoom.cy - baseDy };
-			svg.attr("viewBox", viewFor(zoom).join(" "));
-		};
-
-		var onPanUp = function (event) {
-			if (!panning) return;
-			panning = false;
-			panStart = null;
-			svgNode.classList.remove("panning");
-			svgNode.releasePointerCapture?.(event.pointerId);
-			window.removeEventListener("pointermove", onPanMove);
-			window.removeEventListener("pointerup", onPanUp);
-			window.removeEventListener("pointercancel", onPanUp);
-		};
-
-		svgNode.addEventListener("pointerdown", function (event) {
-			if (event.button !== 1) return;
-			event.preventDefault();
-
-			panning = true;
-			panStart = { x: event.clientX, y: event.clientY, zoom: zoom };
-			svgNode.classList.add("panning");
-			svgNode.setPointerCapture?.(event.pointerId);
-			window.addEventListener("pointermove", onPanMove);
-			window.addEventListener("pointerup", onPanUp);
-			window.addEventListener("pointercancel", onPanUp);
-		});
-
-		svgNode.addEventListener("auxclick", function (event) {
-			if (event.button === 1) event.preventDefault();
-		});
-		svgNode.addEventListener("mousedown", function (event) {
-			if (event.button === 1) event.preventDefault();
-		});
 	};
 
 	// wireSearch filters the list as the needle is typed. The filter is local,
 	// so it never touches the url: only the selected agent is linkable.
-	var wireSearch = function () {		var input = document.querySelector("#agents-search");
+	var wireSearch = function () {
+		var input = document.querySelector("#agents-search");
 		if (!input) return;
 		input.addEventListener("input", function () {
 			state.filter = input.value;
