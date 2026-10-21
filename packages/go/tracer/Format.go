@@ -8,6 +8,10 @@ import (
 // DefaultFormat renders a log as "20:23:33.199 warn this is a warning".
 const DefaultFormat = "%t %l %m"
 
+// DefaultFormatWithOrigin renders a log with the package that produced it:
+// "20:23:33.199 warn [orm] this is a warning".
+const DefaultFormatWithOrigin = "%t %l [%o] %m"
+
 // timestampLayout is the %t rendering: wall-clock time to the millisecond.
 const timestampLayout = "15:04:05.000"
 
@@ -48,7 +52,7 @@ func parseFormat(raw string) (logFormat, error) {
 			literal.WriteByte('%')
 			continue
 		}
-		if kind != 't' && kind != 'l' && kind != 'm' {
+		if kind != 't' && kind != 'l' && kind != 'm' && kind != 'o' {
 			return logFormat{}, fmt.Errorf("format %q: unknown option %%%c", raw, kind)
 		}
 		segment := formatSegment{kind: kind}
@@ -91,6 +95,8 @@ func (s formatSegment) value(log TracerLogInterface) string {
 		value = string(log.GetLevel())
 	case 'm':
 		value = string(log.GetMessage())
+	case 'o':
+		value = log.GetOrigin()
 	}
 	if s.upper {
 		value = strings.ToUpper(value)

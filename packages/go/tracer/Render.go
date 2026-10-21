@@ -32,6 +32,7 @@ var (
 	ruleStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	selectedStyle = lipgloss.NewStyle().Reverse(true)
 	focusedStyle  = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
+	detailStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	hintStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	needleStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 )
@@ -76,14 +77,19 @@ func (t *Tracer) renderLogs() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderFocused draws the focused log in full, beneath the log pane.
+// renderFocused draws the focused log in full, beneath the log pane: its
+// formatted line followed by every detail line the package supplied.
 func (t *Tracer) renderFocused() string {
 	visible := t.Visible()
 	if t.focused < 0 || t.focused >= len(visible) {
 		return ""
 	}
-	body := t.format.render(visible[t.focused])
-	return t.rule() + "\n" + focusedStyle.Render(body)
+	log := visible[t.focused]
+	lines := []string{t.format.render(log)}
+	for _, detail := range log.GetDetails() {
+		lines = append(lines, detailStyle.Render(detail))
+	}
+	return t.rule() + "\n" + focusedStyle.Render(strings.Join(lines, "\n"))
 }
 
 // renderFilter draws the one-line needle editor.
@@ -122,6 +128,9 @@ func (t *Tracer) logRows() int {
 	rows := height - 4 // title, rule, rule, commands
 	if t.focused >= 0 {
 		rows -= 3 // rule, focused log, border
+		if visible := t.Visible(); t.focused < len(visible) {
+			rows -= len(visible[t.focused].GetDetails())
+		}
 	}
 	if t.filterUI {
 		rows -= 2 // rule, needle

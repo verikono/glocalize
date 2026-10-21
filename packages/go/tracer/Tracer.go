@@ -26,6 +26,7 @@ type Tracer struct {
 	ctx      context.Context
 	lines    <-chan string
 	logs     []TracerLogInterface
+	last     *TracerLog
 	filter   *TracerLogFilter
 	cursor   int
 	focused  int
@@ -283,11 +284,18 @@ func (t *Tracer) clampCursor() {
 }
 
 // appendLine parses one raw line into the buffer, dropping the oldest when full.
+// An indented line is a detail of the log above it rather than a new entry.
 func (t *Tracer) appendLine(line string) {
 	if strings.TrimSpace(line) == "" {
 		return
 	}
-	t.logs = append(t.logs, parseLogLine(line, nowFunc()))
+	if isDetailLine(line) && t.last != nil {
+		t.last.AddDetail(strings.TrimSpace(line))
+		return
+	}
+	log := parseLogLine(line, nowFunc())
+	t.last = log
+	t.logs = append(t.logs, log)
 	if len(t.logs) > maxLogs {
 		t.logs = t.logs[len(t.logs)-maxLogs:]
 	}

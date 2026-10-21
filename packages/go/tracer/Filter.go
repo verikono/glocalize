@@ -8,8 +8,9 @@ import (
 // TracerLogFilter narrows a log stream by time window, level and needle.
 //
 // A needle is a plain substring match against every field of a log (time,
-// level, message) unless it begins with "/", in which case the remainder is
-// compiled as a regular expression. Matching is case-insensitive either way.
+// level, origin, message and details) unless it begins with "/", in which case
+// the remainder is compiled as a regular expression. Matching is
+// case-insensitive either way.
 type TracerLogFilter struct {
 	start  EpochSeconds
 	end    EpochSeconds
@@ -99,7 +100,8 @@ func (f *TracerLogFilter) Match(log TracerLogInterface) bool {
 	return f.matchNeedle(log)
 }
 
-// matchNeedle applies the needle to every field of the log.
+// matchNeedle applies the needle to every field of the log: its timestamp,
+// level, origin, message and each detail line.
 func (f *TracerLogFilter) matchNeedle(log TracerLogInterface) bool {
 	if f.needle == "" {
 		return true
@@ -107,8 +109,10 @@ func (f *TracerLogFilter) matchNeedle(log TracerLogInterface) bool {
 	fields := []string{
 		log.GetTimestamp().Format(timestampLayout),
 		string(log.GetLevel()),
+		log.GetOrigin(),
 		string(log.GetMessage()),
 	}
+	fields = append(fields, log.GetDetails()...)
 	if f.rx != nil {
 		for _, field := range fields {
 			if f.rx.MatchString(field) {

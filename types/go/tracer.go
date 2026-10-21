@@ -20,11 +20,15 @@ type TracerLogFilter interface {
 	SetFilterString(needle string) error
 }
 
+// TracerLogInterface is one log entry. A log carries two message types: a
+// concise Message and an optional list of Details for the verbose story.
 type TracerLogInterface interface {
-	GetTime() EpochSeconds
-	GetTimestamp() time.Time
-	GetLevel() LogLevel
-	GetMessage() LogMessage
+	GetOrigin() string       // An identifier of origin, eg the package which created this.
+	GetTime() EpochSeconds   // Time the log entry was created (in unix epoch time - seconds)
+	GetTimestamp() time.Time // Timestamp instead of epoch time
+	GetLevel() LogLevel      // warn, log, error, fatal - you know the drill
+	GetMessage() LogMessage  // the concise message
+	GetDetails() []string    // the details, the waffle, the extended story if any
 }
 
 // TracerLogSource yields log lines for a tracer to consume. Follow returns a

@@ -6,17 +6,39 @@ import (
 	"time"
 )
 
-// TracerLog is one parsed log line: when it happened, its level and its message.
+// TracerLog is one parsed log line: where it came from, when it happened, its
+// level, its concise message and any verbose details.
+//
+// A log carries two message types. Message is the concise, succinct line a
+// reader scans; Details is the optional list of extra lines a package may
+// produce in any quantity, shown only when the log is focused.
 type TracerLog struct {
+	origin  string
 	time    time.Time
 	level   LogLevel
 	message LogMessage
-	TracerLogInterface
+	details []string
 }
 
-// NewTracerLog builds a log from its parts.
+// NewTracerLog builds a log from its parts, with no origin and no details.
 func NewTracerLog(ts time.Time, level LogLevel, message LogMessage) *TracerLog {
 	return &TracerLog{time: ts, level: level, message: message}
+}
+
+// NewTracerLogFrom builds a log with an origin and optional details. The origin
+// identifies the package that produced the entry.
+func NewTracerLogFrom(origin string, ts time.Time, level LogLevel, message LogMessage, details ...string) *TracerLog {
+	return &TracerLog{origin: origin, time: ts, level: level, message: message, details: details}
+}
+
+// AddDetail appends one detail line to the log.
+func (l *TracerLog) AddDetail(detail string) {
+	l.details = append(l.details, detail)
+}
+
+// GetDetails returns the log's verbose detail lines, if any.
+func (l *TracerLog) GetDetails() []string {
+	return l.details
 }
 
 // GetLevel returns the log's severity.
@@ -24,9 +46,14 @@ func (l *TracerLog) GetLevel() LogLevel {
 	return l.level
 }
 
-// GetMessage returns the log's message text.
+// GetMessage returns the log's concise message.
 func (l *TracerLog) GetMessage() LogMessage {
 	return l.message
+}
+
+// GetOrigin returns the identifier of the package that produced the log.
+func (l *TracerLog) GetOrigin() string {
+	return l.origin
 }
 
 // GetTime returns the log's timestamp truncated to whole epoch seconds.
@@ -47,6 +74,12 @@ var timestampRx = regexp.MustCompile(
 
 // levelRx matches a leading level token, bracketed or bare.
 var levelRx = regexp.MustCompile(`(?i)^\[?(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\]?[:\s]+`)
+
+// originRx matches a leading bracketed origin token, as a package emits it:
+// "[orm] SQL Query: ...". The token must be followed by whitespace or the end
+// of the line, so an operation token such as "[WRITE]:/path" is not mistaken
+// for an origin.
+var originRx = regexp.MustCompile(`^\[([A-Za-z][A-Za-z0-9_.\-/]*)\](?:\s+|$)`)
 
 // opRx matches a leading bracketed operation token, as the riot hot service
 // emits: "[WRITE]:/path/to/file".
@@ -75,9 +108,28 @@ func parseLogLine(line string, now time.Time) *TracerLog {
 			rest = strings.TrimSpace(rest[len(match[0]):])
 		}
 	}
-	if match := levelRx.FindStringSubmatch(rest); match != nil {
-		log.level = normaliseLevel(match[1])
-		rest = strings.TrimSpace(rest[len(match[0]):])
+
+	// the level and the origin may appear in either order, so consume each at
+	// most once, whichever comes first.
+	var haveLevel, haveOrigin bool
+	for {
+		if !haveLevel {
+			if match := levelRx.FindStringSubmatch(rest); match != nil {
+				log.level = normaliseLevel(match[1])
+				rest = strings.TrimSpace(rest[len(match[0]):])
+				haveLevel = true
+				continue
+			}
+		}
+		if !haveOrigin {
+			if match := originRx.FindStringSubmatch(rest); match != nil && !isLevelToken(match[1]) {
+				log.origin = match[1]
+				rest = strings.TrimSpace(rest[len(match[0]):])
+				haveOrigin = true
+				continue
+			}
+		}
+		break
 	}
 	if match := opRx.FindString(rest); match != "" {
 		rest = strings.TrimSpace(rest[len(match):])
@@ -85,6 +137,25 @@ func parseLogLine(line string, now time.Time) *TracerLog {
 
 	log.message = LogMessage(rest)
 	return log
+}
+
+// isLevelToken reports whether token names a level, so a bracketed level is
+// never mistaken for an origin.
+func isLevelToken(token string) bool {
+	switch strings.ToUpper(token) {
+	case "TRACE", "DEBUG", "INFO", "WARN", "WARNING", "ERROR", "FATAL", "PANIC":
+		return true
+	}
+	return false
+}
+
+// isDetailLine reports whether a raw line continues the previous log rather
+// than starting a new one. An indented line is a detail.
+func isDetailLine(line string) bool {
+	if line == "" {
+		return false
+	}
+	return line[0] == ' ' || line[0] == '\t'
 }
 
 // parseTimestamp resolves a captured timestamp, anchoring a time-only value to
