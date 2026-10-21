@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pressly/goose/v3"
-	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -1148,7 +1147,7 @@ func (db *DB) Raw() *sql.DB {
 
 // RunMigrations runs all pending migrations from the embedded folder.
 func (db *DB) RunMigrations(ctx context.Context) error {
-	log.Println("Running migrations...")
+	ormLog.Info("running migrations")
 	if err := goose.SetDialect(db.provider); err != nil {
 		return err
 	}
@@ -1156,10 +1155,10 @@ func (db *DB) RunMigrations(ctx context.Context) error {
 	goose.SetBaseFS(migrationsFS)
 	err := goose.UpContext(ctx, db.sqlDB, "migrations")
 	if err != nil {
-		log.Printf("Migrations failed: %v", err)
+		ormLog.Error("migrations failed", err.Error())
 		return err
 	}
-	log.Println("Migrations completed successfully.")
+	ormLog.Info("migrations completed successfully")
 	return nil
 }
 
@@ -1196,28 +1195,28 @@ func (q *Queries) prepare(ctx context.Context, query string) (*sql.Stmt, error) 
 }
 
 func (q *Queries) query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	log.Printf("[%s] SQL Query: %s | Args: %v", strings.ToUpper(q.provider), query, args)
+	ormLog.Trace("sql query", query, fmt.Sprintf("args: %v", args))
 	stmt, err := q.prepare(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	res, err := stmt.QueryContext(ctx, args...)
 	if err != nil {
-		log.Printf("[%s] SQL Error: %v | Query: %s | Args: %v", strings.ToUpper(q.provider), err, query, args)
+		ormLog.Error("sql error", err.Error(), query, fmt.Sprintf("args: %v", args))
 		return nil, TranslateDBError(err)
 	}
 	return res, nil
 }
 
 func (q *Queries) exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	log.Printf("[%s] SQL Exec: %s | Args: %v", strings.ToUpper(q.provider), query, args)
+	ormLog.Trace("sql exec", query, fmt.Sprintf("args: %v", args))
 	stmt, err := q.prepare(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	res, err := stmt.ExecContext(ctx, args...)
 	if err != nil {
-		log.Printf("[%s] SQL Error: %v | Query: %s | Args: %v", strings.ToUpper(q.provider), err, query, args)
+		ormLog.Error("sql error", err.Error(), query, fmt.Sprintf("args: %v", args))
 		return nil, TranslateDBError(err)
 	}
 	return res, nil
@@ -1239,7 +1238,7 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 	if !ok {
 		return fn(q)
 	}
-	log.Printf("[%s] SQL Begin Transaction", strings.ToUpper(q.provider))
+	ormLog.Trace("sql begin transaction")
 	tx, err := starter.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1247,7 +1246,7 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(q.provider))
+			ormLog.Warn("sql rollback transaction")
 			_ = tx.Rollback()
 			panic(p)
 		}
@@ -1265,11 +1264,11 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 	txQueries.copyHooksFrom(q)
 
 	if err := fn(txQueries); err != nil {
-		log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(q.provider))
+		ormLog.Warn("sql rollback transaction")
 		_ = tx.Rollback()
 		return err
 	}
-	log.Printf("[%s] SQL Commit Transaction", strings.ToUpper(q.provider))
+	ormLog.Trace("sql commit transaction")
 	return tx.Commit()
 }
 
@@ -2392,7 +2391,7 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	if err != nil {
 		return nil, TranslateDBError(err)
 	}
-	log.Printf("[%s] SQL Begin Transaction", strings.ToUpper(db.provider))
+	ormLog.Trace("sql begin transaction")
 	q := &Queries{
 		db:        sqlTx,
 		baseDB:    db.Queries.baseDB,
@@ -2410,12 +2409,12 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 }
 
 func (tx *Tx) Commit() error {
-	log.Printf("[%s] SQL Commit Transaction", strings.ToUpper(tx.provider))
+	ormLog.Trace("sql commit transaction")
 	return TranslateDBError(tx.tx.Commit())
 }
 
 func (tx *Tx) Rollback() error {
-	log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(tx.provider))
+	ormLog.Warn("sql rollback transaction")
 	return TranslateDBError(tx.tx.Rollback())
 }
 

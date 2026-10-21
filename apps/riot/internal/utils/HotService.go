@@ -2,7 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,12 +13,12 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/verikono/glocalize/packages/go/puck"
+	"github.com/verikono/glocalize/packages/go/tracer"
 )
 
 const (
 	riotDevDirEnv  = "RIOT_DEV_DIR"
 	riotModuleDecl = "module github.com/verikono/glocalize/apps/riot"
-	hotTimestamp   = "06/01/02 15:04:05"
 	hotDebounce    = 300 * time.Millisecond
 
 	// hotDispatchFlush bounds how long a refresh dispatch may take to reach
@@ -27,13 +26,17 @@ const (
 	hotDispatchFlush = 250 * time.Millisecond
 )
 
+// Origin is the package name stamped on every log entry the utils package
+// produces, so a tracer can attribute a hot-service line to it.
+const Origin = "utils"
+
 // RiotDevDirEnv names the environment variable that points at the riot module
 // directory for the hot service.
 const RiotDevDirEnv = riotDevDirEnv
 
-// hotLog writes hot-service lines without the standard log prefix: change
-// lines carry their own [yy/mm/dd hh:mm:ss] timestamp per the spec.
-var hotLog = log.New(os.Stdout, "", 0)
+// hotLog writes hot-service lines through the tracer logger, stamped with the
+// utils origin so a tracer can attribute a change to the hot service.
+var hotLog = tracer.NewLogger(Origin, os.Stdout)
 
 // ValidateDevDir verifies that RIOT_DEV_DIR, when set, points at the riot
 // module. It is a no-op returning nil when RIOT_DEV_DIR is unset.
@@ -141,7 +144,7 @@ func (h *hotReloader) onChange(event puck.FSChangeEvent) error {
 	if ignoredPath(h.devDir, event.Path) {
 		return nil
 	}
-	hotLog.Printf("[%s] [%s]:%s", time.Now().Format(hotTimestamp), changeType(event.Op), event.Path)
+	hotLog.Info(changeType(event.Op), event.Path)
 	select {
 	case h.events <- event:
 	default:
@@ -173,7 +176,7 @@ func (h *hotReloader) run() {
 
 func (h *hotReloader) rebuildAndRestart() {
 	if err := h.rebuild(); err != nil {
-		hotLog.Printf("[%s] [ERROR] %v", time.Now().Format(hotTimestamp), err)
+		hotLog.Error("rebuild failed", err.Error())
 		return
 	}
 	// Tell connected browser clients to reload before the process is replaced.
@@ -186,7 +189,7 @@ func (h *hotReloader) rebuildAndRestart() {
 	bin := filepath.Join(h.devDir, "dist", "riot")
 	argv := []string{bin, "serve", "--daemon", "--port", strconv.Itoa(h.port)}
 	if err := syscall.Exec(bin, argv, os.Environ()); err != nil {
-		hotLog.Printf("[%s] [ERROR] %v", time.Now().Format(hotTimestamp), err)
+		hotLog.Error("restart failed", err.Error())
 	}
 }
 

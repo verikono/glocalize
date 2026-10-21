@@ -3,17 +3,28 @@ package trace
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/verikono/glocalize/packages/go/tracer"
 )
 
-// DefaultFormat is the render format used when the caller supplies none.
-const DefaultFormat = tracer.DefaultFormat
+// DefaultFormat is the render format used when the caller supplies none. It
+// includes the origin so a reader can see which package produced each entry.
+const DefaultFormat = tracer.DefaultFormatWithOrigin
 
 // logFileName is the file `riot serve` redirects the daemon's output into.
 const logFileName = "riot.log"
+
+// Origin is the package name riot stamps on the entries it produces itself.
+const Origin = "riot"
+
+// NewLogger builds a logger that stamps every line with origin, writing to out.
+// A nil out writes to stdout, which is where the daemon's output is redirected.
+func NewLogger(origin string, out io.Writer) *tracer.Logger {
+	return tracer.NewLogger(origin, out)
+}
 
 // Options configures one trace session.
 type Options struct {
