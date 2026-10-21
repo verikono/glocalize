@@ -208,9 +208,11 @@ body {
     fill: rgb(200, 60, 60);
 }
 
+/* the caption sits at the bottom left, clear of the tree's root node which
+   occupies the stage's top left. */
 .agent-graph .caption {
     position: absolute;
-    top: 0;
+    bottom: 0;
     left: 0;
     font-family: sans-serif;
     font-size: 11px;

@@ -180,10 +180,13 @@
 
 		var root = d3.hierarchy(tree);
 
-		// the tidy layout: depth becomes the column and siblings stack vertically,
-		// so a chain of skills reads as one straight horizontal row rather than a
-		// staircase. nodeSize is [row, column] because the tree grows sideways.
-		d3.tree().nodeSize([rowHeight, columnWidth])(root);
+		// rows are assigned in pre-order, so every child sits on a row below its
+		// parent. d3.tree() centres a parent among its children, which can place
+		// the first child above it; the indented layout must always step down.
+		var row = 0;
+		root.eachBefore(function (d) {
+			d.row = row++;
+		});
 
 		var svg = d3.select(stage)
 			.append("svg")
@@ -196,8 +199,12 @@
 			return d.depth * columnWidth;
 		};
 
+		var posY = function (d) {
+			return d.row * rowHeight;
+		};
+
 		// links: a step-before path, horizontal to the child's column then
-		// vertical to its row.
+		// vertical down to its row.
 		var link = svg.append("g")
 			.attr("class", "links")
 			.attr("fill", "none")
@@ -208,7 +215,7 @@
 			.data(root.links())
 			.join("path")
 			.attr("d", function (d) {
-				return "M" + posX(d.source) + "," + d.source.x + "H" + posX(d.target) + "V" + d.target.x;
+				return "M" + posX(d.source) + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
 			});
 
 		var node = svg.append("g")
@@ -218,7 +225,7 @@
 			.join("g")
 			.attr("class", "node")
 			.attr("transform", function (d) {
-				return "translate(" + posX(d) + "," + d.x + ")";
+				return "translate(" + posX(d) + "," + posY(d) + ")";
 			});
 
 		node.append("circle")
