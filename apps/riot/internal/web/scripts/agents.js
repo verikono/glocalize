@@ -195,11 +195,10 @@
 
 		var fontSize = 16;
 		var rowHeight = 32;
-		var columnWidth = 170;
 
-		// a label is truncated to what fits between its own node and the next
-		// column, so a deep chain never writes over the column to its right.
-		var labelChars = Math.max(Math.floor((columnWidth - 16) / (fontSize * 0.55)), 8);
+		// the gap between a label's right edge and the next column's node: the
+		// node circle plus breathing room.
+		var labelGap = 26;
 
 		var root = d3.hierarchy(tree);
 
@@ -217,39 +216,21 @@
 			.attr("role", "img")
 			.attr("aria-label", "tree of " + agent.name + "'s skills and their dependencies");
 
-		// the agent is the root, so it sits in the first column at the top left.
-		var posX = function (d) {
-			return d.depth * columnWidth;
-		};
-
-		var posY = function (d) {
-			return d.row * rowHeight;
-		};
-
-		// links: a step-before path, horizontal to the child's column then
-		// vertical down to its row.
-		var link = svg.append("g")
+		// the links group is created first so it paints behind the nodes; its
+		// paths are bound once the columns are known.
+		var linkGroup = svg.append("g")
 			.attr("class", "links")
 			.attr("fill", "none")
 			.attr("stroke", "currentColor")
 			.attr("stroke-opacity", 0.35)
-			.attr("stroke-width", 1.5)
-			.selectAll("path")
-			.data(root.links())
-			.join("path")
-			.attr("d", function (d) {
-				return "M" + posX(d.source) + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
-			});
+			.attr("stroke-width", 1.5);
 
 		var node = svg.append("g")
 			.attr("class", "nodes")
 			.selectAll("g")
 			.data(root.descendants())
 			.join("g")
-			.attr("class", "node")
-			.attr("transform", function (d) {
-				return "translate(" + posX(d) + "," + posY(d) + ")";
-			});
+			.attr("class", "node");
 
 		node.append("circle")
 			.attr("class", "hit")
@@ -264,6 +245,9 @@
 				return d.children ? "currentColor" : "#8a8a8a";
 			});
 
+		// pass one: draw every label in full and measure it. Nothing is truncated
+		// and nothing is estimated; the rendered width is what the columns are
+		// allocated from.
 		node.append("text")
 			.attr("dy", "0.31em")
 			.attr("x", 8)
@@ -274,7 +258,47 @@
 			.attr("font-size", fontSize)
 			.attr("font-family", "sans-serif")
 			.text(function (d) {
-				return truncate(d.data.name, labelChars);
+				return d.data.name;
+			});
+
+		node.each(function (d) {
+			d.labelWidth = this.querySelector("text").getComputedTextLength();
+		});
+
+		// pass two: a column is as wide as its widest label plus the gap, and the
+		// columns are laid out end to end from those measured widths.
+		var columnWidth = [];
+		root.each(function (d) {
+			var width = d.labelWidth + labelGap;
+			columnWidth[d.depth] = Math.max(columnWidth[d.depth] || 0, width);
+		});
+
+		var columnX = [];
+		var offset = 0;
+		for (var depth = 0; depth < columnWidth.length; depth++) {
+			columnX[depth] = offset;
+			offset += columnWidth[depth];
+		}
+
+		var posX = function (d) {
+			return columnX[d.depth];
+		};
+
+		var posY = function (d) {
+			return d.row * rowHeight;
+		};
+
+		node.attr("transform", function (d) {
+			return "translate(" + posX(d) + "," + posY(d) + ")";
+		});
+
+		// links: a step-before path, horizontal to the child's column then
+		// vertical down to its row.
+		var link = linkGroup.selectAll("path")
+			.data(root.links())
+			.join("path")
+			.attr("d", function (d) {
+				return "M" + posX(d.source) + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
 			});
 
 		// the root is the agent itself, so it is drawn as the tree's heading.
@@ -309,13 +333,6 @@
 		stage.appendChild(caption);
 
 		fitAndZoom(stage, svg);
-	};
-
-	// truncate shortens a label so long skill names do not swamp the drawing.
-	// The full name is always available in the node's <title>.
-	var truncate = function (name, maxChars) {
-		var text = String(name || "");
-		return text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text;
 	};
 
 	// fitAndZoom fits the viewBox to the drawn content, then wires wheel zoom
