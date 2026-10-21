@@ -8,9 +8,12 @@
 	var MIN_WIDTH = 280;
 	var MAX_FRACTION = 0.6;
 
-	// the add-skill control: the radius of its round buttons, the padding inside
+	// the add-skill control: the radius of its round buttons, how far right of
+	// the agent's name the button sits and how far above it, the padding inside
 	// a popout, the height of a popout row, and the gap between the elements.
-	var ADD_R = 20;
+	var ADD_R = 10;
+	var ADD_OFFSET_X = 25;
+	var ADD_OFFSET_Y = 10;
 	var POP_PAD = 8;
 	var POP_ITEM_H = 12;
 	var POP_GAP = 16;
@@ -304,6 +307,13 @@
 				return d.data.name;
 			});
 
+		// the root is the agent itself, so it is drawn as the tree's heading. The
+		// class is applied before measuring, because it makes the label bold and
+		// a bold label is wider than the width measured without it.
+		node.filter(function (d) {
+			return d.depth === 0;
+		}).classed("agent-root", true);
+
 		// sfh is a single skill's text height, measured from the label that was
 		// actually drawn. The row pitch is that height plus a gap.
 		var sfh = SKILL_FONT_PX;
@@ -350,11 +360,6 @@
 			.attr("d", function (d) {
 				return "M" + posX(d.source) + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
 			});
-
-		// the root is the agent itself, so it is drawn as the tree's heading.
-		node.filter(function (d) {
-			return d.depth === 0;
-		}).classed("agent-root", true);
 
 		node.append("title")
 			.text(function (d) {
@@ -413,9 +418,10 @@
 			var nameY = view.y + view.k * posY(root);
 			var nameRight = nameX + view.k * (8 + root.labelWidth);
 
-			// the button is 50px right of the name and 20px above it.
-			var cx = nameRight + 50 + ADD_R;
-			var cy = nameY - 20;
+			// the button sits ADD_OFFSET_X right of the name and ADD_OFFSET_Y
+			// above it.
+			var cx = nameRight + ADD_OFFSET_X + ADD_R;
+			var cy = nameY - ADD_OFFSET_Y;
 			var top = cy - ADD_R;
 
 			var button = overlay.append("g").attr("class", "add-button");
