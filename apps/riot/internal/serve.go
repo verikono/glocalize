@@ -32,6 +32,7 @@ type RiotServer struct {
 	graph  *gql.RiotGraph
 	mcps   *mcp.RiotMcp
 	ui     *web.RiotWebUi
+	agents *web.RiotWebUi
 	mux    *http.ServeMux
 	T.HotReloadable
 }
@@ -43,7 +44,7 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		Port:   utils.ResolvePort(),
 		GqlURL: "/graph",
 		McpURL: "/mcp",
-		UiURL:  "/chart",
+		UiURL:  "/skills",
 	}
 
 	config.applyEnvVars()
@@ -91,7 +92,13 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		return nil, err
 	}
 
-	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps, ui: wui}
+	agui, err := web.NewAgentsWebService()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps, ui: wui, agents: agui}
 
 	inst.mux = http.NewServeMux()
 	inst.mux.Handle(config.GqlURL, graph.Handler())
@@ -99,6 +106,12 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 	inst.mux.Handle("/graphiql", graph.ExtendedGraphiQLHandler(config.GqlURL))
 	inst.mux.Handle(config.McpURL, mcps.Handler())
 	err = wui.BindMux(inst.mux)
+	if err != nil {
+		return nil, err
+	}
+	if err := agui.BindDocumentMux(inst.mux); err != nil {
+		return nil, err
+	}
 	if config.Playground != "" {
 		inst.mux.Handle(config.Playground, graph.PlaygroundHandler())
 	}

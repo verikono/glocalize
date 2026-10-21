@@ -1,0 +1,8 @@
+<aside id="agents-list" class="agents-list">
+    <input id="agents-search" class="agents-search" type="search" placeholder="search agents" spellcheck="false" aria-label="search agents" />
+    <div id="agents-items" class="agents-items" aria-label="agents"></div>
+</aside>
+<div id="agents-resizer" class="agents-resizer" role="separator" aria-orientation="vertical" aria-label="resize agent list" tabindex="0"></div>
+<section id="agents-main" class="agents-main">
+    <h1 id="agent-name" class="agent-name"></h1>
+</section>

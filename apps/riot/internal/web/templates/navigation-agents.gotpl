@@ -1,0 +1,4 @@
+<nav class="nav-links" aria-label="sections">
+    <a class="nav-link" href="/skills/">skills</a>
+    <a class="nav-link" href="/agents/">agents</a>
+</nav>

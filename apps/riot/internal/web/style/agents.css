@@ -1,0 +1,168 @@
+/* the agents page: a searchable list on the left, a draggable separator, and
+   the selected agent's detail on the right. The list starts at 20% of the
+   viewport and never narrows past 280px. */
+
+/* the document base and the navigation bar are repeated from main.css so this
+   page stands alone: it is served without the skills stylesheet. */
+html {
+    height: 100%;
+}
+
+html * {
+    display: flex;
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+}
+
+body {
+    width: 100dvw;
+    min-height: 100dvh;
+}
+
+#root {
+    flex-direction: column;
+    flex: 1;
+    width: 100dvw;
+    min-height: 100dvh;
+    position: relative;
+}
+
+#navigation {
+    height: 80px;
+    flex: none;
+    align-items: center;
+    gap: 16px;
+    padding: 0 12px;
+    border-bottom: 2px solid rgb(37, 37, 37);
+    background: rgb(240, 240, 240);
+    font-family: sans-serif;
+    font-size: 13px;
+    color: rgb(37, 37, 37);
+}
+
+.nav-links {
+    gap: 14px;
+    align-items: center;
+}
+
+.nav-link {
+    color: rgb(37, 37, 37);
+    text-decoration: none;
+    padding: 4px 2px;
+    border-bottom: 2px solid transparent;
+}
+
+.nav-link:hover {
+    border-bottom-color: rgb(37, 37, 37);
+}
+
+.errored {
+    color: rgb(180, 40, 40);
+    font-family: sans-serif;
+    font-size: 13px;
+    padding: 12px;
+}
+
+#agents {
+    flex: 1;
+    min-height: 0;
+    flex-direction: row;
+    font-family: sans-serif;
+    font-size: 12px;
+    color: rgb(37, 37, 37);
+}
+
+.agents-list {
+    width: 20%;
+    min-width: 280px;
+    flex: none;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 2px solid rgb(37, 37, 37);
+    background: rgb(240, 240, 240);
+}
+
+.agents-search {
+    flex: none;
+    border: none;
+    border-bottom: 1px solid rgb(190, 190, 190);
+    background: rgb(255, 255, 255);
+    padding: 8px 10px;
+    font: inherit;
+    color: inherit;
+    min-width: 0;
+}
+
+.agents-search:focus {
+    outline: none;
+    border-bottom-color: rgb(120, 120, 120);
+}
+
+.agents-items {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    flex-direction: column;
+}
+
+.agent-item {
+    flex: none;
+    border: none;
+    border-bottom: 1px solid rgb(226, 226, 226);
+    background: transparent;
+    padding: 7px 10px;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.agent-item:hover {
+    background: rgb(226, 226, 226);
+}
+
+.agent-item.active {
+    background: rgb(37, 37, 37);
+    color: rgb(240, 240, 240);
+}
+
+.agents-empty {
+    padding: 8px 10px;
+    color: rgb(110, 110, 110);
+}
+
+/* the drag handle between the list and the main view. It is a sibling of both,
+   so dragging it only ever resizes the list. */
+.agents-resizer {
+    flex: none;
+    width: 8px;
+    cursor: col-resize;
+    background: rgb(190, 210, 60);
+    border-left: 1px solid rgb(140, 160, 30);
+    border-right: 1px solid rgb(140, 160, 30);
+    touch-action: none;
+}
+
+.agents-resizer:hover,
+.agents-resizer.dragging {
+    background: rgb(205, 225, 80);
+}
+
+.agents-main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    padding: 16px;
+    overflow: auto;
+}
+
+.agent-name {
+    flex: none;
+    font-size: 20px;
+    font-weight: 600;
+}
