@@ -8,10 +8,28 @@
 	var MIN_WIDTH = 280;
 	var MAX_FRACTION = 0.6;
 
+	// the add-skill control: the radius of its round buttons, the padding inside
+	// a popout, the height of a popout row, and the gap between the elements.
+	var ADD_R = 20;
+	var POP_PAD = 8;
+	var POP_ITEM_H = 12;
+	var POP_GAP = 16;
+
+	var PRIORITIES = ["LOW", "NORMAL", "HIGH", "ESSENTIAL"];
+
 	var state = {
 		agents: [],
+		skills: [],
 		filter: "",
 		selected: "",
+	};
+
+	// addState is the add-skill interface: whether it is open, which skills are
+	// ticked, and the priority they will be bound at.
+	var addState = {
+		open: false,
+		selected: new Set(),
+		priority: "NORMAL",
 	};
 
 	var query = async (document, variables) => {
@@ -56,6 +74,18 @@
 			return null;
 		}
 		return result.data.Agents || [];
+	};
+
+	// loadSkills fetches the whole skill catalogue, which the add list offers
+	// from. It is separate from the agent query because the list needs every
+	// skill, not just the ones an agent already has.
+	var loadSkills = async () => {
+		var result = await query("{ Skills { id name } }");
+		if (result.error || !result.data) {
+			console.error("Agents: failed getting skills", result.error);
+			return null;
+		}
+		return result.data.Skills || [];
 	};
 
 	// byName orders the list alphabetically, case-insensitively, so the column
@@ -218,19 +248,25 @@
 
 		var svg = d3.select(stage)
 			.append("svg")
+			.attr("width", "100%")
+			.attr("height", "100%")
 			.attr("role", "img")
 			.attr("aria-label", "tree of " + agent.name + "'s skills and their dependencies");
 
+		// the tree lives in a group the zoom and pan transform, so the drawing
+		// scales while the controls above it keep a fixed pixel size.
+		var viewport = svg.append("g").attr("class", "viewport");
+
 		// the links group is created first so it paints behind the nodes; its
 		// paths are bound once the columns are known.
-		var linkGroup = svg.append("g")
+		var linkGroup = viewport.append("g")
 			.attr("class", "links")
 			.attr("fill", "none")
 			.attr("stroke", "currentColor")
 			.attr("stroke-opacity", 0.35)
 			.attr("stroke-width", 1.5);
 
-		var node = svg.append("g")
+		var node = viewport.append("g")
 			.attr("class", "nodes")
 			.selectAll("g")
 			.data(root.descendants())
@@ -268,16 +304,16 @@
 				return d.data.name;
 			});
 
-		// the row height comes from the measured height of a skill label, so the
-		// rows are spaced by the font that is actually rendered.
-		var skillFontHeight = SKILL_FONT_PX;
+		// sfh is a single skill's text height, measured from the label that was
+		// actually drawn. The row pitch is that height plus a gap.
+		var sfh = SKILL_FONT_PX;
 		node.each(function (d) {
 			var text = this.querySelector("text");
 			d.labelWidth = text.getComputedTextLength();
-			if (d.depth > 0) skillFontHeight = text.getBBox().height;
+			if (d.depth > 0) sfh = text.getBBox().height;
 		});
 
-		var rowHeight = skillFontHeight + ROW_GAP;
+		var rowHeight = sfh + ROW_GAP;
 
 		// pass two: a column is as wide as its widest label plus the gap, and the
 		// columns are laid out end to end from those measured widths.
@@ -325,7 +361,8 @@
 				return d.data.description ? d.data.name + "\n\n" + d.data.description : d.data.name;
 			});
 
-		// hovering a node highlights the path back to the agent.
+		// hovering a node highlights the path back to the agent; clicking a skill
+		// opens it on the skills page.
 		node.on("mouseenter", function (event, d) {
 			var path = new Set(d.ancestors());
 			link.attr("stroke-opacity", function (l) {
@@ -341,17 +378,371 @@
 			node.classed("active", false);
 		});
 
-		// the svg is sized to the drawing at 1:1, so the labels render at their
-		// stated pixel size and the stage scrolls whatever does not fit.
-		var bounds = svg.node().getBBox();
-		var width = Math.ceil(bounds.x + bounds.width + ORIGIN_X);
-		var height = Math.ceil(bounds.y + bounds.height + ORIGIN_Y);
-		svg.attr("width", width).attr("height", height).attr("viewBox", "0 0 " + width + " " + height);
+		node.style("cursor", function (d) {
+			return d.depth === 0 ? "default" : "pointer";
+		}).on("click", function (event, d) {
+			if (d.depth === 0) return;
+			event.stopPropagation();
+			window.location.href = "/skills/?skill=" + encodeURIComponent(d.data.id);
+		});
+
+		// the overlay holds the add control. It is never scaled, so the button and
+		// its popouts keep their pixel size however far the tree is zoomed.
+		var overlay = svg.append("g").attr("class", "overlay");
+
+		// view is the zoom and pan: a user-space point maps to screen as
+		// k * point + (x, y).
+		var view = { k: 1, x: 0, y: 0 };
+
+		// applyView writes the transform and re-anchors the control, which is
+		// positioned in screen space from the agent's name.
+		var applyView = function () {
+			viewport.attr("transform", "translate(" + view.x + "," + view.y + ") scale(" + view.k + ")");
+			renderAddControl();
+		};
+
+		// renderAddControl draws the round + button beside the agent's name and,
+		// when open, the skill list, the priority list and the confirm/cancel
+		// buttons. Every element's top edge is aligned to the button's top edge.
+		var renderAddControl = function () {
+			overlay.selectAll("*").remove();
+
+			// the agent's name in screen space, so the control tracks the tree as
+			// it is zoomed and panned.
+			var nameX = view.x + view.k * posX(root);
+			var nameY = view.y + view.k * posY(root);
+			var nameRight = nameX + view.k * (8 + root.labelWidth);
+
+			// the button is 50px right of the name and 20px above it.
+			var cx = nameRight + 50 + ADD_R;
+			var cy = nameY - 20;
+			var top = cy - ADD_R;
+
+			var button = overlay.append("g").attr("class", "add-button");
+			button.append("circle")
+				.attr("cx", cx)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(37, 37, 37)");
+			button.append("text")
+				.attr("x", cx)
+				.attr("y", cy)
+				.attr("dy", "0.35em")
+				.attr("text-anchor", "middle")
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("font-family", "sans-serif")
+				.attr("font-size", ADD_R * 0.96)
+				.text("+");
+
+			button.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				if (addState.open) {
+					closeAddControl();
+					return;
+				}
+				addState.open = true;
+				addState.selected = new Set();
+				addState.priority = "NORMAL";
+				renderAgentTree(agent);
+			});
+
+			// a right click on the button cancels the interaction.
+			button.on("contextmenu", function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+				closeAddControl();
+			});
+
+			if (!addState.open) return;
+
+			var visible = visibleSkillIDs(root);
+			var offered = state.skills
+				.filter(function (skill) {
+					return !visible.has(skill.id);
+				})
+				.sort(byName);
+
+			// the skill list popout, immediately right of the button.
+			var listX = cx + ADD_R + POP_GAP;
+			var listWidth = 260;
+			var listHeight = POP_PAD * 2 + Math.max(offered.length, 1) * POP_ITEM_H;
+
+			var list = overlay.append("g").attr("class", "add-list");
+			list.append("rect")
+				.attr("x", listX)
+				.attr("y", top)
+				.attr("width", listWidth)
+				.attr("height", listHeight)
+				.attr("rx", 4)
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("stroke", "rgb(37, 37, 37)")
+				.attr("stroke-width", 1);
+
+			if (offered.length === 0) {
+				list.append("text")
+					.attr("x", listX + POP_PAD)
+					.attr("y", top + POP_PAD)
+					.attr("dy", "0.8em")
+					.attr("font-family", "sans-serif")
+					.attr("font-size", POP_ITEM_H)
+					.attr("fill", "rgb(110, 110, 110)")
+					.text("every skill is already shown");
+			}
+
+			offered.forEach(function (skill, index) {
+				var rowY = top + POP_PAD + index * POP_ITEM_H;
+				var row = list.append("g").attr("class", "add-item");
+				var selected = addState.selected.has(skill.id);
+
+				row.append("rect")
+					.attr("x", listX)
+					.attr("y", rowY)
+					.attr("width", listWidth)
+					.attr("height", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(37, 37, 37)" : "transparent");
+
+				row.append("text")
+					.attr("x", listX + POP_PAD)
+					.attr("y", rowY)
+					.attr("dy", "0.8em")
+					.attr("font-family", "sans-serif")
+					.attr("font-size", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(255, 255, 255)" : "rgb(37, 37, 37)")
+					.text(skill.name);
+
+				row.style("cursor", "pointer").on("click", function (event) {
+					event.stopPropagation();
+					if (addState.selected.has(skill.id)) addState.selected.delete(skill.id);
+					else addState.selected.add(skill.id);
+					renderAgentTree(agent);
+				});
+			});
+
+			// the priority list and the confirm/cancel buttons only appear once at
+			// least one skill is ticked.
+			if (addState.selected.size === 0) return;
+
+			var priorityX = listX + listWidth + POP_GAP;
+			var priorityWidth = 120;
+			var priorityHeight = POP_PAD * 2 + PRIORITIES.length * POP_ITEM_H;
+
+			var priorities = overlay.append("g").attr("class", "add-priorities");
+			priorities.append("rect")
+				.attr("x", priorityX)
+				.attr("y", top)
+				.attr("width", priorityWidth)
+				.attr("height", priorityHeight)
+				.attr("rx", 4)
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("stroke", "rgb(37, 37, 37)")
+				.attr("stroke-width", 1);
+
+			PRIORITIES.forEach(function (priority, index) {
+				var rowY = top + POP_PAD + index * POP_ITEM_H;
+				var selected = addState.priority === priority;
+				var row = priorities.append("g").attr("class", "add-priority");
+
+				row.append("rect")
+					.attr("x", priorityX)
+					.attr("y", rowY)
+					.attr("width", priorityWidth)
+					.attr("height", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(37, 37, 37)" : "transparent");
+
+				row.append("text")
+					.attr("x", priorityX + POP_PAD)
+					.attr("y", rowY)
+					.attr("dy", "0.8em")
+					.attr("font-family", "sans-serif")
+					.attr("font-size", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(255, 255, 255)" : "rgb(37, 37, 37)")
+					.text(priority);
+
+				row.style("cursor", "pointer").on("click", function (event) {
+					event.stopPropagation();
+					addState.priority = priority;
+					renderAgentTree(agent);
+				});
+			});
+
+			// the confirm and cancel buttons, right of the priority list. Their
+			// glyphs are drawn as fractions of the radius, so they scale with it.
+			var confirmX = priorityX + priorityWidth + POP_GAP + ADD_R;
+			var cancelX = confirmX + ADD_R * 2 + POP_GAP + ADD_R;
+
+			var confirm = overlay.append("g").attr("class", "add-confirm");
+			confirm.append("circle")
+				.attr("cx", confirmX)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(40, 150, 70)");
+			confirm.append("path")
+				.attr("d", "M" + (confirmX - ADD_R * 0.44) + "," + cy +
+					"L" + (confirmX - ADD_R * 0.12) + "," + (cy + ADD_R * 0.32) +
+					"L" + (confirmX + ADD_R * 0.48) + "," + (cy - ADD_R * 0.32))
+				.attr("fill", "none")
+				.attr("stroke", "rgb(255, 255, 255)")
+				.attr("stroke-width", ADD_R * 0.16)
+				.attr("stroke-linecap", "round")
+				.attr("stroke-linejoin", "round");
+			confirm.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				bindSelectedSkills(agent);
+			});
+
+			var cancel = overlay.append("g").attr("class", "add-cancel");
+			cancel.append("circle")
+				.attr("cx", cancelX)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(190, 50, 50)");
+			cancel.append("path")
+				.attr("d", "M" + (cancelX - ADD_R * 0.36) + "," + (cy - ADD_R * 0.36) +
+					"L" + (cancelX + ADD_R * 0.36) + "," + (cy + ADD_R * 0.36) +
+					"M" + (cancelX + ADD_R * 0.36) + "," + (cy - ADD_R * 0.36) +
+					"L" + (cancelX - ADD_R * 0.36) + "," + (cy + ADD_R * 0.36))
+				.attr("fill", "none")
+				.attr("stroke", "rgb(255, 255, 255)")
+				.attr("stroke-width", ADD_R * 0.16)
+				.attr("stroke-linecap", "round");
+			cancel.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				closeAddControl();
+			});
+
+			// a right click on any part of the open interface cancels it.
+			overlay.on("contextmenu", function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+				closeAddControl();
+			});
+		};
+
+		// wireZoomPan binds wheel zoom about the pointer and middle-drag pan. The
+		// overlay is re-anchored on every change, so the control stays beside the
+		// agent's name at a constant size.
+		var wireZoomPan = function () {
+			var svgNode = svg.node();
+
+			svgNode.addEventListener("wheel", function (event) {
+				event.preventDefault();
+
+				var rect = svgNode.getBoundingClientRect();
+				var px = event.clientX - rect.left;
+				var py = event.clientY - rect.top;
+
+				var k = Math.min(Math.max(view.k * Math.exp(-event.deltaY * 0.0015), 0.2), 8);
+				if (k === view.k) return;
+
+				// keep the user-space point under the pointer fixed.
+				var userX = (px - view.x) / view.k;
+				var userY = (py - view.y) / view.k;
+				view.k = k;
+				view.x = px - k * userX;
+				view.y = py - k * userY;
+				applyView();
+			}, { passive: false });
+
+			var panning = false;
+			var panStart = null;
+
+			var onPanMove = function (event) {
+				if (!panning || !panStart) return;
+				event.preventDefault();
+				view.x = panStart.x + (event.clientX - panStart.cx);
+				view.y = panStart.y + (event.clientY - panStart.cy);
+				applyView();
+			};
+
+			var onPanUp = function (event) {
+				if (!panning) return;
+				panning = false;
+				panStart = null;
+				svgNode.classList.remove("panning");
+				svgNode.releasePointerCapture?.(event.pointerId);
+				window.removeEventListener("pointermove", onPanMove);
+				window.removeEventListener("pointerup", onPanUp);
+				window.removeEventListener("pointercancel", onPanUp);
+			};
+
+			svgNode.addEventListener("pointerdown", function (event) {
+				// button 1 is the middle mouse button.
+				if (event.button !== 1) return;
+				event.preventDefault();
+
+				panning = true;
+				panStart = { cx: event.clientX, cy: event.clientY, x: view.x, y: view.y };
+				svgNode.classList.add("panning");
+				svgNode.setPointerCapture?.(event.pointerId);
+				window.addEventListener("pointermove", onPanMove);
+				window.addEventListener("pointerup", onPanUp);
+				window.addEventListener("pointercancel", onPanUp);
+			});
+
+			// suppress the browser's middle-click autoscroll and paste behaviours.
+			svgNode.addEventListener("auxclick", function (event) {
+				if (event.button === 1) event.preventDefault();
+			});
+			svgNode.addEventListener("mousedown", function (event) {
+				if (event.button === 1) event.preventDefault();
+			});
+		};
+
+		applyView();
+		wireZoomPan();
 
 		var caption = document.createElement("p");
 		caption.className = "caption";
 		caption.textContent = (root.descendants().length - 1) + " skills · " + root.leaves().length + " leaves";
 		stage.appendChild(caption);
+	};
+
+	// visibleSkillIDs is the set of skills already drawn in the tree. The add
+	// list filters them out, so it only ever offers skills the agent lacks.
+	var visibleSkillIDs = function (root) {
+		var ids = new Set();
+		root.each(function (d) {
+			if (d.depth > 0) ids.add(d.data.id);
+		});
+		return ids;
+	};
+
+	// closeAddControl drops the interface and redraws the tree without it.
+	var closeAddControl = function () {
+		addState.open = false;
+		addState.selected = new Set();
+		addState.priority = "NORMAL";
+		var agent = state.agents.find(function (candidate) {
+			return candidate.id === state.selected;
+		});
+		if (agent) renderAgentTree(agent);
+	};
+
+	// bindSelectedSkills attaches the ticked skills to the agent at the chosen
+	// priority, then reloads the catalogue so the tree shows them.
+	var bindSelectedSkills = async function (agent) {
+		var skillIds = Array.from(addState.selected);
+		if (skillIds.length === 0) return;
+
+		var result = await query(
+			"mutation Bind($agentId: String!, $skillIds: [String!]!, $priority: String) { BindAgentSkills(agentId: $agentId, skillIds: $skillIds, priority: $priority) { id name } }",
+			{ agentId: agent.id, skillIds: skillIds, priority: addState.priority }
+		);
+		if (result.error) {
+			console.error("Agents: failed binding skills", result.error);
+			return;
+		}
+
+		addState.open = false;
+		addState.selected = new Set();
+		addState.priority = "NORMAL";
+
+		var agents = await loadAgents();
+		if (agents) state.agents = agents;
+		var refreshed = state.agents.find(function (candidate) {
+			return candidate.id === agent.id;
+		});
+		if (refreshed) renderAgentTree(refreshed);
 	};
 
 	// wireSearch filters the list as the needle is typed. The filter is local,
@@ -417,6 +808,11 @@
 
 		state.agents = agents;
 		renderList();
+
+		// the add list offers from the whole catalogue, so it is loaded alongside
+		// the agents rather than on demand.
+		var skills = await loadSkills();
+		if (skills) state.skills = skills;
 
 		// ?agent=<identifier> opens straight onto that agent.
 		var params = new URLSearchParams(window.location.search);

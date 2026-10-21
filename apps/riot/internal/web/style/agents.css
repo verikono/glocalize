@@ -168,27 +168,33 @@ body {
 }
 
 /* the graph stage holds the agent's skill tree. It is the flex child that
-   grows, and it scrolls: the tree is drawn at 1:1 so its labels keep their
-   stated pixel size however large the drawing gets. */
+   grows; the tree is zoomed and panned inside it rather than scrolled. */
 .agent-graph {
     flex: 1;
     min-height: 0;
     position: relative;
     margin-top: 12px;
-    overflow: auto;
+    overflow: hidden;
 }
 
-/* the svg is sized to the drawing in pixels, so it scrolls rather than
-   scaling. flex: none stops the global `display: flex` rule from shrinking it
-   to the stage's width, which would defeat the scroll. */
+/* the svg fills the stage. The tree is drawn in a group the zoom and pan
+   transform, so the drawing scales while the overlay controls above it keep a
+   fixed pixel size. */
 .agent-graph svg {
     display: block;
     flex: none;
+    width: 100%;
+    height: 100%;
     color: rgb(37, 37, 37);
 }
 
 .agent-graph svg * {
     display: inline;
+}
+
+/* middle-mouse drag pans the graph; the cursor shows the grab state. */
+.agent-graph svg.panning {
+    cursor: grabbing;
 }
 
 /* the agent's own node is the tree's heading, so it reads heavier than the
