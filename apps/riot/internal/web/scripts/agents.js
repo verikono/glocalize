@@ -30,8 +30,27 @@
 		}
 	};
 
+	// DEPENDENCY_DEPTH is how many levels of dependencies the tree query asks
+	// for. The catalogue nests about five deep, so this is comfortably more than
+	// any real chain; a skill with no dependencies returns an empty array, which
+	// ends the recursion in the data.
+	var DEPENDENCY_DEPTH = 30;
+
+	// dependencyFragment returns a GraphQL fragment selecting a skill and its
+	// dependencies to the given depth. Each level nests the one before it, so a
+	// single query returns the whole chain rather than one level of it.
+	var dependencyFragment = function (depth) {
+		var fields = "id name description";
+		for (var i = 0; i < depth; i++) {
+			fields = "id name description dependencies { " + fields + " }";
+		}
+		return "fragment SkillTree on Skill { " + fields + " }";
+	};
+
 	var loadAgents = async () => {
-		var result = await query("{ Agents { id name description skills { id name description dependencies { id name description } } } }");
+		var result = await query(
+			"{ Agents { id name description skills { ...SkillTree } } } " + dependencyFragment(DEPENDENCY_DEPTH)
+		);
 		if (result.error || !result.data) {
 			console.error("Agents: failed getting data", result.error);
 			return null;
@@ -178,6 +197,10 @@
 		var rowHeight = 32;
 		var columnWidth = 170;
 
+		// a label is truncated to what fits between its own node and the next
+		// column, so a deep chain never writes over the column to its right.
+		var labelChars = Math.max(Math.floor((columnWidth - 16) / (fontSize * 0.55)), 8);
+
 		var root = d3.hierarchy(tree);
 
 		// rows are assigned in pre-order, so every child sits on a row below its
@@ -251,7 +274,7 @@
 			.attr("font-size", fontSize)
 			.attr("font-family", "sans-serif")
 			.text(function (d) {
-				return truncate(d.data.name, 26);
+				return truncate(d.data.name, labelChars);
 			});
 
 		// the root is the agent itself, so it is drawn as the tree's heading.
