@@ -5,4 +5,5 @@
 <div id="agents-resizer" class="agents-resizer" role="separator" aria-orientation="vertical" aria-label="resize agent list" tabindex="0"></div>
 <section id="agents-main" class="agents-main">
     <h1 id="agent-name" class="agent-name"></h1>
+    <div id="agent-graph" class="agent-graph"></div>
 </section>

@@ -16,6 +16,7 @@ var agentsCss string
 // AgentScriptFiles and AgentStyleSheets are keyed by their own /agents/ paths, so the agents UI can be mounted beside the skills UI without colliding on /scripts/ and /styles/.
 var AgentScriptFiles = map[T.UrlPath]WebScript{
 	"/agents/scripts/agents.js": {name: "agents", route: "/agents/", urlPath: "/agents/scripts/agents.js", path: "./scripts/agents.js", language: CommonJavascript, content: Utf8String(agentsJs)},
+	"/agents/scripts/d3.min.js": {name: "d3", route: "/agents/", urlPath: "/agents/scripts/d3.min.js", path: "./scripts/d3.min.js", language: CommonJavascript, content: Utf8String(d3Js)},
 }
 
 var AgentStyleSheets = map[T.UrlPath]StyleSheet{

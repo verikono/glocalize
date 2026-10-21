@@ -44,10 +44,50 @@ func TestAgentsDocumentServes(t *testing.T) {
 	n, _ := doc.Body.Read(buf)
 	body := string(buf[:n])
 
-	for _, want := range []string{`id="agents-list"`, `id="agents-search"`, `id="agents-resizer"`, `id="agent-name"`} {
+	for _, want := range []string{`id="agents-list"`, `id="agents-search"`, `id="agents-resizer"`, `id="agent-name"`, `id="agent-graph"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("document is missing %s: %s", want, body)
 		}
+	}
+}
+
+// TestAgentsDocumentServesD3 proves the agents page loads d3, which the skill tree needs, and that it is served from the page's own path rather than the skills UI's /scripts/.
+func TestAgentsDocumentServesD3(t *testing.T) {
+	ui, err := web.NewAgentsWebService()
+	if err != nil {
+		t.Fatalf("NewAgentsWebService: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	if err := ui.BindDocumentMux(mux); err != nil {
+		t.Fatalf("BindDocumentMux: %v", err)
+	}
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/agents/scripts/d3.min.js")
+	if err != nil {
+		t.Fatalf("get d3: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if resp.ContentLength <= 0 {
+		t.Fatalf("content-length = %d, want > 0", resp.ContentLength)
+	}
+
+	doc, err := http.Get(server.URL + "/agents/")
+	if err != nil {
+		t.Fatalf("get document: %v", err)
+	}
+	defer doc.Body.Close()
+
+	buf := make([]byte, 8192)
+	n, _ := doc.Body.Read(buf)
+	if !strings.Contains(string(buf[:n]), `src="/agents/scripts/d3.min.js"`) {
+		t.Fatalf("document does not load d3: %s", string(buf[:n]))
 	}
 }
 
