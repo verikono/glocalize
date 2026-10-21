@@ -5,5 +5,14 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"chat.agentFilesLocations": {
+			"~/.agents/agents": true,
+    	},
+		"chat.agentSkillsLocations": {
+			"~/.agents/skills": true,
+    	},
+		"chat.useAgentsMdFile": false,
+		"github.copilot.chat.agent.autoFix": true
+	}
 }

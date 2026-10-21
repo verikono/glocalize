@@ -76,6 +76,31 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 	skillType.AddFieldConfig("dependencies", &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.skillDependencies})
 	skillType.AddFieldConfig("dependents", &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.skillDependents})
 
+	// Reference is the standalone catalogue of resources a skill can draw on;
+	// SkillReference is the join that attaches one to a skill. The enums are
+	// exposed as strings, matching how StyleToken's enums are served.
+	referenceType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Reference",
+		Fields: graphql.Fields{
+			"name":         &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"description":  &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"accessType":   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"resourceType": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"content":      &graphql.Field{Type: graphql.String},
+		},
+	})
+
+	skillReferenceType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "SkillReference",
+		Fields: graphql.Fields{
+			"skillId":       &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"referenceName": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"reference":     &graphql.Field{Type: referenceType, Resolve: r.skillReferenceReference},
+		},
+	})
+
+	skillType.AddFieldConfig("references", &graphql.Field{Type: graphql.NewList(skillReferenceType), Resolve: r.skillReferences})
+
 	styleTokenType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "StyleToken",
 		Fields: graphql.Fields{
@@ -223,6 +248,17 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 				Type:    graphql.NewList(projectType),
 				Resolve: r.projects,
 			},
+			"Reference": &graphql.Field{
+				Type: referenceType,
+				Args: graphql.FieldConfigArgument{
+					"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: r.reference,
+			},
+			"References": &graphql.Field{
+				Type:    graphql.NewList(referenceType),
+				Resolve: r.references,
+			},
 		},
 	})
 
@@ -236,6 +272,21 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 			"content":      &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
 			"keywords":     &graphql.InputObjectFieldConfig{Type: graphql.String},
 			"dependencies": &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+			"references":   &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+		},
+	})
+
+	// ReferenceInput is the write shape for a reference. `name` is the unique
+	// identity, so a create with an existing name is rejected rather than
+	// silently overwriting the stored resource.
+	referenceInputType := graphql.NewInputObject(graphql.InputObjectConfig{
+		Name: "ReferenceInput",
+		Fields: graphql.InputObjectConfigFieldMap{
+			"name":         &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"description":  &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"accessType":   &graphql.InputObjectFieldConfig{Type: graphql.String},
+			"resourceType": &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"content":      &graphql.InputObjectFieldConfig{Type: graphql.String},
 		},
 	})
 
@@ -248,6 +299,22 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(skillInputType)},
 				},
 				Resolve: r.saveSkill,
+			},
+			"SaveReference": &graphql.Field{
+				Type: referenceType,
+				Args: graphql.FieldConfigArgument{
+					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(referenceInputType)},
+				},
+				Resolve: r.saveReference,
+			},
+			"BindAgentSkills": &graphql.Field{
+				Type: graphql.NewList(skillType),
+				Args: graphql.FieldConfigArgument{
+					"agentId":  &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"skillIds": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.String)))},
+					"priority": &graphql.ArgumentConfig{Type: graphql.String},
+				},
+				Resolve: r.bindAgentSkills,
 			},
 		},
 	})
@@ -329,6 +396,17 @@ func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
 		}
 	}
 
+	// references REPLACES the skill's reference set, exactly like dependencies:
+	// the reference records themselves are never deleted, only the join rows.
+	referenceNames := make([]string, 0)
+	if raw, ok := input["references"].([]interface{}); ok {
+		for _, item := range raw {
+			if name, ok := item.(string); ok && name != "" {
+				referenceNames = append(referenceNames, name)
+			}
+		}
+	}
+
 	ctx := r.ctx(p)
 
 	var saved *orm.Skill
@@ -371,6 +449,20 @@ func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
 				return err
 			}
 		}
+
+		// replace the reference set the same way: detach every join row, then
+		// attach the named references. The Reference records survive.
+		if _, err := tx.SkillReference.DeleteMany(eq[orm.SkillReference, string]("skillId", saved.Id)).Exec(ctx); err != nil {
+			return err
+		}
+		for _, referenceName := range referenceNames {
+			if _, err := tx.SkillReference.Create().
+				SetSkillId(saved.Id).
+				SetReferenceName(referenceName).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -385,6 +477,120 @@ func (r *resolver) user(p graphql.ResolveParams) (interface{}, error) {
 
 func (r *resolver) users(p graphql.ResolveParams) (interface{}, error) {
 	return r.db.User.FindMany().Exec(r.ctx(p))
+}
+
+// bindAgentSkills attaches each skill to the agent at the given priority. A
+// skill already bound is re-prioritised rather than duplicated, so the call is
+// idempotent. It returns the agent's full skill list afterwards.
+func (r *resolver) bindAgentSkills(p graphql.ResolveParams) (interface{}, error) {
+	agentID, _ := p.Args["agentId"].(string)
+	priority, _ := p.Args["priority"].(string)
+	if agentID == "" {
+		return nil, fmt.Errorf("BindAgentSkills: agentId is required")
+	}
+	if priority == "" {
+		priority = string(orm.Priority_NORMAL)
+	}
+	if !orm.PriorityType(priority).IsValid() {
+		return nil, fmt.Errorf("BindAgentSkills: unknown priority %q", priority)
+	}
+
+	skillIDs := make([]string, 0)
+	if raw, ok := p.Args["skillIds"].([]interface{}); ok {
+		for _, item := range raw {
+			if id, ok := item.(string); ok && id != "" {
+				skillIDs = append(skillIDs, id)
+			}
+		}
+	}
+
+	ctx := r.ctx(p)
+	err := r.db.Transaction(ctx, func(tx *orm.Tx) error {
+		for _, skillID := range skillIDs {
+			existing, err := tx.AgentSkill.FindFirst(
+				eq[orm.AgentSkill, string]("agentId", agentID),
+				eq[orm.AgentSkill, string]("skillId", skillID),
+			).Exec(ctx)
+			if err != nil {
+				return err
+			}
+			if existing != nil {
+				if _, err := tx.AgentSkill.Update(unique[orm.AgentSkill]("agentId", agentID), eq[orm.AgentSkill, string]("skillId", skillID)).
+					SetPriority(orm.PriorityType(priority)).
+					Exec(ctx); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := tx.AgentSkill.Create().
+				SetAgentId(agentID).
+				SetSkillId(skillID).
+				SetPriority(orm.PriorityType(priority)).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.skillsForAgent(ctx, agentID)
+}
+
+func (r *resolver) reference(p graphql.ResolveParams) (interface{}, error) {
+	return r.db.Reference.FindFirst(eq[orm.Reference, string]("name", p.Args["name"].(string))).Exec(r.ctx(p))
+}
+
+func (r *resolver) references(p graphql.ResolveParams) (interface{}, error) {
+	return r.db.Reference.FindMany().Exec(r.ctx(p))
+}
+
+// saveReference creates a reference. The name is the unique identity, so an
+// existing name is an error rather than an overwrite: the browser's create
+// modal must not silently replace a resource another skill already draws on.
+func (r *resolver) saveReference(p graphql.ResolveParams) (interface{}, error) {
+	input, ok := p.Args["input"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("SaveReference: input is required")
+	}
+
+	name, _ := input["name"].(string)
+	description, _ := input["description"].(string)
+	accessType, _ := input["accessType"].(string)
+	resourceType, _ := input["resourceType"].(string)
+	content, _ := input["content"].(string)
+
+	if name == "" || description == "" || resourceType == "" {
+		return nil, fmt.Errorf("SaveReference: name, description and resourceType are required")
+	}
+	if accessType == "" {
+		accessType = string(orm.URI_STATIC)
+	}
+	if !orm.URIType(accessType).IsValid() {
+		return nil, fmt.Errorf("SaveReference: invalid accessType %q", accessType)
+	}
+	if !orm.ReferenceTypeType(resourceType).IsValid() {
+		return nil, fmt.Errorf("SaveReference: invalid resourceType %q", resourceType)
+	}
+
+	ctx := r.ctx(p)
+
+	existing, err := r.db.Reference.FindFirst(eq[orm.Reference, string]("name", name)).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("SaveReference: a reference named %q already exists", name)
+	}
+
+	return r.db.Reference.Create().
+		SetName(name).
+		SetDescription(description).
+		SetAccessType(orm.URIType(accessType)).
+		SetResourceType(orm.ReferenceTypeType(resourceType)).
+		SetContent(content).
+		Exec(ctx)
 }
 
 func (r *resolver) project(p graphql.ResolveParams) (interface{}, error) {
@@ -462,7 +668,12 @@ func (r *resolver) agentSkills(p graphql.ResolveParams) (interface{}, error) {
 	if !ok || agent == nil {
 		return []*orm.Skill{}, nil
 	}
-	rows, err := r.db.AgentSkill.FindMany(eq[orm.AgentSkill, string]("agentId", agent.Id)).Exec(r.ctx(p))
+	return r.skillsForAgent(r.ctx(p), agent.Id)
+}
+
+// skillsForAgent loads the skills bound to an agent, in binding order.
+func (r *resolver) skillsForAgent(ctx context.Context, agentID string) (interface{}, error) {
+	rows, err := r.db.AgentSkill.FindMany(eq[orm.AgentSkill, string]("agentId", agentID)).Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +681,7 @@ func (r *resolver) agentSkills(p graphql.ResolveParams) (interface{}, error) {
 	for _, row := range rows {
 		ids = append(ids, row.SkillId)
 	}
-	return r.skillsByIDs(p, ids)
+	return r.skillsByIDs(graphql.ResolveParams{Context: ctx}, ids)
 }
 
 func (r *resolver) userPreferred(p graphql.ResolveParams) (interface{}, error) {
@@ -531,6 +742,27 @@ func (r *resolver) skillDependents(p graphql.ResolveParams) (interface{}, error)
 		ids = append(ids, row.DependentId)
 	}
 	return r.skillsByIDs(p, ids)
+}
+
+// skillReferences returns the join rows attaching references to this skill.
+// The reference records themselves are loaded by the SkillReference.reference
+// field resolver, so a skill's references are always the current catalogue
+// entries rather than a copy taken when the join was written.
+func (r *resolver) skillReferences(p graphql.ResolveParams) (interface{}, error) {
+	skill, ok := p.Source.(*orm.Skill)
+	if !ok || skill == nil {
+		return []*orm.SkillReference{}, nil
+	}
+	return r.db.SkillReference.FindMany(eq[orm.SkillReference, string]("skillId", skill.Id)).Exec(r.ctx(p))
+}
+
+// skillReferenceReference loads the reference a join row points at.
+func (r *resolver) skillReferenceReference(p graphql.ResolveParams) (interface{}, error) {
+	row, ok := p.Source.(*orm.SkillReference)
+	if !ok || row == nil {
+		return nil, nil
+	}
+	return r.db.Reference.FindFirst(eq[orm.Reference, string]("name", row.ReferenceName)).Exec(r.ctx(p))
 }
 
 // helpers

@@ -7,6 +7,8 @@
 # new skill is being created; when present the record is updated in place.
 # `dependencies` REPLACES the skill's dependency set: every id listed becomes a
 # dependency of this skill, and every id not listed is detached.
+# `references` REPLACES the skill's reference set the same way: the join rows
+# are rewritten, and the Reference records themselves are never deleted.
 input SkillInput {
 	id: String
 	name: String!
@@ -15,10 +17,26 @@ input SkillInput {
 	content: String!
 	keywords: String
 	dependencies: [String!]
+	references: [String!]
+}
+
+# ReferenceInput is the write shape for a reference. `name` is the unique
+# identity, so creating a reference whose name already exists is an error.
+# `accessType` defaults to "static" when omitted.
+input ReferenceInput {
+	name: String!
+	description: String!
+	accessType: String
+	resourceType: String!
+	content: String
 }
 
 type Mutation {
-	# SaveSkill creates or updates a skill and replaces its dependency set.
-	# Returns the stored record, including its resolved dependencies.
+	# SaveSkill creates or updates a skill and replaces its dependency and
+	# reference sets. Returns the stored record, including its resolved
+	# dependencies and references.
 	SaveSkill(input: SkillInput!): Skill!
+
+	# SaveReference creates a reference. Returns the stored record.
+	SaveReference(input: ReferenceInput!): Reference!
 }

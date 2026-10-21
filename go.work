@@ -5,6 +5,7 @@ use (
 	./apps/riot
 	./packages/go/data/prisma
 	./packages/go/puck
+	./packages/go/tracer
 	./packages/go/utils
 	./types/go
 )

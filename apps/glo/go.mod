@@ -9,6 +9,12 @@ require (
 	github.com/verikono/glocalize/types/go v0.1.0
 )
 
+require (
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+)
+
 replace github.com/verikono/glocalize/packages/go/data/prisma => ../../packages/go/data/prisma
 
 replace github.com/verikono/glocalize/types/go => ../../types/go

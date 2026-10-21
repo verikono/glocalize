@@ -33,5 +33,27 @@ query SkillByName($name: String!) {
 			id
 			name
 		}
+		references {
+			referenceName
+			reference {
+				name
+				description
+				accessType
+				resourceType
+				content
+			}
+		}
+	}
+}
+
+# References is the whole reference catalogue. The chooser's reference
+# multiselect offers it, and the create modal checks new names against it.
+query References {
+	References {
+		name
+		description
+		accessType
+		resourceType
+		content
 	}
 }

@@ -68,8 +68,7 @@ func applyOptions(cfg *prostiConfig, options ...OptionerFn) error {
 	return nil
 }
 
-// toolsOf returns the configured tools, never nil, so the agent config is
-// always well formed.
+// toolsOf returns the configured tools, never nil, so the agent config is always well formed.
 func toolsOf(cfg prostiConfig) []tool.BaseTool {
 	if cfg.tools == nil {
 		return []tool.BaseTool{}
@@ -77,9 +76,7 @@ func toolsOf(cfg prostiConfig) []tool.BaseTool {
 	return cfg.tools
 }
 
-// validateModelConfig rejects a model configuration the ark client cannot use,
-// so the failure names the missing setting instead of surfacing deep inside the
-// provider.
+// validateModelConfig rejects a model configuration the ark client cannot use, so the failure names the missing setting instead of surfacing deep inside the provider.
 func validateModelConfig(cfg ark.ChatModelConfig) error {
 	if strings.TrimSpace(cfg.Model) == "" {
 		return fmt.Errorf("agents: a model id is required (WithModel)")

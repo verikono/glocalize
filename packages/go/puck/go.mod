@@ -7,6 +7,6 @@ require (
 	github.com/verikono/glocalize/types/go v0.1.0
 )
 
-require golang.org/x/sys v0.13.0 // indirect
+require golang.org/x/sys v0.49.0 // indirect
 
 replace github.com/verikono/glocalize/types/go => ../../../types/go

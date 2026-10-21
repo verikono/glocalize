@@ -74,6 +74,22 @@ const LoadSkills = async (props = {}, ...cbo) => {
 
 }
 
+// loadReferences fetches the reference catalogue into chooserState and redraws
+// the reference multiselect. A failure is reported in the form's status line
+// rather than thrown: the skill form still works without references.
+const loadReferences = async () => {
+    const { data, error: err } = await query(
+        `{ References { name description accessType resourceType content } }`,
+    );
+    if (err || !data) {
+        console.error("References: failed getting data", err);
+        setStatus("failed to load references", true);
+        return;
+    }
+    chooserState.references = data.References || [];
+    renderReferenceOptions();
+}
+
 // query posts a graphql document to /graph and returns { data, error }.
 // It is synchronous in shape only: callers await the returned promise.
 const query = async (document, props = {}) => {
@@ -116,6 +132,11 @@ const chooserState = {
     // the raw ?dependency= value a create state was opened with. It is kept
     // until the catalogue has loaded, so an id or a name can both be resolved.
     pendingDependency: "",
+    // the reference catalogue, and the names of the references checked on the
+    // skill being edited. References are identified by name, not id.
+    references: [],
+    selectedReferences: new Set(),
+    referenceFilter: "",
 };
 
 // pillarHover tracks the focused-pillar row the pointer is over, so a ctrl
@@ -194,10 +215,22 @@ const main = async (loaded,) => {
 
     await LoadSkills({}, { el: stage, fn: onLoadedSkills });
 
+    // the reference catalogue is loaded alongside the skills; the reference
+    // multiselect and the create modal both read it.
+    await loadReferences();
+
     // a ?subject=<name>&class=skill url opens straight onto that skill.
     const subject = params.get("subject");
     if (subject && params.get("class") === "skill") {
         await selectSkill(subject, { push: false });
+    }
+
+    // a ?skill=<id> url opens onto that skill too, resolving the id to its name
+    // so a link can carry the stable identifier rather than the display name.
+    const skillID = String(params.get("skill") || "").trim();
+    if (skillID) {
+        const known = chooserState.skills.find(skill => skill.id === skillID);
+        if (known) await selectSkill(known.name, { push: false });
     }
 }
 
@@ -459,7 +492,7 @@ const wirePillarCreate = () => {
 const selectSkill = async (name, options = {}) => {
     const { push = true } = options;
     const { data, error: err } = await query(
-        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content keywords dependencies { id name } } }`,
+        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content keywords dependencies { id name } references { referenceName reference { name description accessType resourceType content } } } }`,
         { variables: { name } },
     );
     if (err || !data || !data.Skill) {
@@ -497,53 +530,34 @@ const cloneSkill = (skill) => ({
     content: skill.content || "",
     keywords: skill.keywords || "",
     dependencies: (skill.dependencies || []).map(dep => dep.id),
+    // references are identified by name: the join row carries referenceName,
+    // and the nested reference record is only there for display.
+    references: (skill.references || [])
+        .map(row => row.referenceName || (row.reference && row.reference.name) || "")
+        .filter(Boolean),
 });
 
-// wireChooser binds the form once: the multiselect, the new-skill button, the
-// revert and save actions, and the browser back/forward buttons.
+// wireChooser binds the form once: the multiselects, the new-skill and
+// new-reference buttons, the revert and save actions, and the browser
+// back/forward buttons.
 const wireChooser = () => {
     const form = document.querySelector("#skill-form");
     if (!form) return;
 
-    const multiselect = document.querySelector("#skill-dependencies");
-    const toggle = multiselect.querySelector(".multiselect-toggle");
-    const menu = multiselect.querySelector(".multiselect-menu");
-    const search = multiselect.querySelector(".multiselect-search");
-    const options = multiselect.querySelector(".multiselect-options");
-
-    toggle.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const open = multiselect.classList.toggle("open");
-        toggle.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) {
-            // every opening starts from the full list.
-            search.value = "";
-            chooserState.filter = "";
-            renderDependencyOptions();
-            search.focus();
-        }
+    wireMultiselect("#skill-dependencies", {
+        getFilter: () => chooserState.filter,
+        setFilter: (value) => { chooserState.filter = value; },
+        select: (id) => chooserState.selected.add(id),
+        deselect: (id) => chooserState.selected.delete(id),
+        render: renderDependencyOptions,
     });
 
-    // clicking anywhere else closes the menu.
-    document.addEventListener("click", (event) => {
-        if (!multiselect.contains(event.target)) {
-            multiselect.classList.remove("open");
-            toggle.setAttribute("aria-expanded", "false");
-        }
-    });
-
-    // the filter narrows the list without disturbing the checked set.
-    search.addEventListener("input", () => {
-        chooserState.filter = search.value.trim().toLowerCase();
-        renderDependencyOptions();
-    });
-
-    options.addEventListener("change", (event) => {
-        const box = event.target;
-        if (!box || box.type !== "checkbox") return;
-        if (box.checked) chooserState.selected.add(box.value);
-        else chooserState.selected.delete(box.value);
-        updateMultiselectLabel();
+    wireMultiselect("#skill-references", {
+        getFilter: () => chooserState.referenceFilter,
+        setFilter: (value) => { chooserState.referenceFilter = value; },
+        select: (name) => chooserState.selectedReferences.add(name),
+        deselect: (name) => chooserState.selectedReferences.delete(name),
+        render: renderReferenceOptions,
     });
 
     document.querySelector("#skill-new").addEventListener("click", () => {
@@ -551,6 +565,8 @@ const wireChooser = () => {
         const parent = chooserState.loaded;
         enterCreateState(parent && parent.id ? parent.id : "");
     });
+
+    document.querySelector("#reference-new").addEventListener("click", openReferenceModal);
 
     document.querySelector("#skill-revert").addEventListener("click", () => {
         // in the creation state the button is Cancel: it drops the create
@@ -580,6 +596,8 @@ const wireChooser = () => {
         await saveSkill();
     });
 
+    wireReferenceModal();
+
     window.addEventListener("popstate", () => {
         const params = new URLSearchParams(window.location.search);
 
@@ -602,6 +620,54 @@ const wireChooser = () => {
         if (subject && params.get("class") === "skill") {
             selectSkill(subject, { push: false });
         }
+    });
+}
+
+// wireMultiselect binds one multiselect: the toggle, the outside-click close,
+// the filter box, and the checkbox list. The caller supplies the filter state
+// accessors and the renderer, so the dependency and reference lists share the
+// same behaviour without sharing their data.
+const wireMultiselect = (selector, options) => {
+    const multiselect = document.querySelector(selector);
+    if (!multiselect) return;
+
+    const toggle = multiselect.querySelector(".multiselect-toggle");
+    const search = multiselect.querySelector(".multiselect-search");
+    const list = multiselect.querySelector(".multiselect-options");
+
+    toggle.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const open = multiselect.classList.toggle("open");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+            // every opening starts from the full list.
+            search.value = "";
+            options.setFilter("");
+            options.render();
+            search.focus();
+        }
+    });
+
+    // clicking anywhere else closes the menu.
+    document.addEventListener("click", (event) => {
+        if (!multiselect.contains(event.target)) {
+            multiselect.classList.remove("open");
+            toggle.setAttribute("aria-expanded", "false");
+        }
+    });
+
+    // the filter narrows the list without disturbing the checked set.
+    search.addEventListener("input", () => {
+        options.setFilter(search.value.trim().toLowerCase());
+        options.render();
+    });
+
+    list.addEventListener("change", (event) => {
+        const box = event.target;
+        if (!box || box.type !== "checkbox") return;
+        if (box.checked) options.select(box.value);
+        else options.deselect(box.value);
+        options.render();
     });
 }
 
@@ -636,6 +702,7 @@ const enterCreateState = (dependency = "") => {
         content: "",
         keywords: "",
         dependencies: id ? [id] : [],
+        references: [],
     });
 
     setStatus(known ? `new skill depending on ${known.name}` : "new skill");
@@ -670,6 +737,13 @@ const fillForm = (skill) => {
     const search = document.querySelector("#skill-dependencies .multiselect-search");
     if (search) search.value = "";
     renderDependencyOptions();
+
+    // the reference multiselect is reset the same way.
+    chooserState.selectedReferences = new Set(skill.references || []);
+    chooserState.referenceFilter = "";
+    const referenceSearch = document.querySelector("#skill-references .multiselect-search");
+    if (referenceSearch) referenceSearch.value = "";
+    renderReferenceOptions();
 }
 
 // renderDependencyOptions lists the catalogue as checkboxes, alphabetically,
@@ -735,6 +809,145 @@ const updateMultiselectLabel = () => {
 // selectedDependencies returns the ids of the checked dependencies.
 const selectedDependencies = () => Array.from(chooserState.selected);
 
+// renderReferenceOptions lists the reference catalogue as checkboxes,
+// alphabetically, narrowed by the current filter and checked from
+// chooserState.selectedReferences. References are keyed by name.
+const renderReferenceOptions = () => {
+    const list = document.querySelector("#skill-references .multiselect-options");
+    if (!list) return;
+
+    const filter = chooserState.referenceFilter;
+
+    list.textContent = "";
+
+    const options = chooserState.references
+        .filter(reference => !filter || String(reference.name || "").toLowerCase().includes(filter))
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+    if (options.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "multiselect-empty";
+        empty.textContent = filter ? "no matching references" : "no references";
+        list.appendChild(empty);
+        updateReferenceLabel();
+        return;
+    }
+
+    for (const reference of options) {
+        const label = document.createElement("label");
+        label.className = "multiselect-option";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = reference.name;
+        input.checked = chooserState.selectedReferences.has(reference.name);
+
+        const text = document.createElement("span");
+        text.textContent = reference.name;
+
+        label.appendChild(input);
+        label.appendChild(text);
+        list.appendChild(label);
+    }
+    updateReferenceLabel();
+}
+
+// updateReferenceLabel summarises the checked references on the toggle.
+const updateReferenceLabel = () => {
+    const label = document.querySelector("#skill-references .multiselect-label");
+    if (!label) return;
+    const checked = Array.from(chooserState.selectedReferences).sort((a, b) => String(a).localeCompare(String(b)));
+    label.textContent = checked.length === 0
+        ? "MultiSelect <References>"
+        : checked.join(", ");
+}
+
+// selectedReferences returns the names of the checked references.
+const selectedReferences = () => Array.from(chooserState.selectedReferences);
+
+// openReferenceModal shows the create-reference modal with a clean form.
+const openReferenceModal = () => {
+    const modal = document.querySelector("#reference-modal");
+    if (!modal) return;
+
+    document.querySelector("#reference-name").value = "";
+    document.querySelector("#reference-description").value = "";
+    document.querySelector("#reference-type").value = "literature";
+    document.querySelector("#reference-content").value = "";
+    setReferenceStatus("");
+
+    modal.hidden = false;
+    document.querySelector("#reference-name").focus();
+}
+
+// closeReferenceModal hides the create-reference modal.
+const closeReferenceModal = () => {
+    const modal = document.querySelector("#reference-modal");
+    if (modal) modal.hidden = true;
+}
+
+// setReferenceStatus writes a short message into the modal's status line.
+const setReferenceStatus = (message, isError = false) => {
+    const status = document.querySelector("#reference-status");
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle("errored", isError);
+}
+
+// wireReferenceModal binds the modal's cancel, backdrop and submit actions.
+const wireReferenceModal = () => {
+    const modal = document.querySelector("#reference-modal");
+    const form = document.querySelector("#reference-form");
+    if (!modal || !form) return;
+
+    document.querySelector("#reference-cancel").addEventListener("click", closeReferenceModal);
+    modal.querySelector("[data-modal-close]").addEventListener("click", closeReferenceModal);
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !modal.hidden) closeReferenceModal();
+    });
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await createReference();
+    });
+}
+
+// createReference posts the modal through the SaveReference mutation, then
+// checks the new reference on the skill being edited. The skill itself is not
+// written until Save, so the association is only staged here.
+const createReference = async () => {
+    const name = document.querySelector("#reference-name").value.trim();
+    const description = document.querySelector("#reference-description").value.trim();
+    const resourceType = document.querySelector("#reference-type").value;
+    const content = document.querySelector("#reference-content").value;
+
+    if (!name || !description || !content) {
+        setReferenceStatus("name, description and content are required", true);
+        return;
+    }
+
+    setReferenceStatus("creating…");
+    const { data, error: err } = await query(
+        `mutation SaveReference($input: ReferenceInput!) { SaveReference(input: $input) { name description accessType resourceType content } }`,
+        { variables: { input: { name, description, accessType: "static", resourceType, content } } },
+    );
+    if (err || !data || !data.SaveReference) {
+        const message = err && err[0] && err[0].message ? err[0].message : "create failed";
+        setReferenceStatus(message, true);
+        console.error("SaveReference", err);
+        return;
+    }
+
+    const created = data.SaveReference;
+    chooserState.references = [...chooserState.references.filter(r => r.name !== created.name), created];
+    chooserState.selectedReferences.add(created.name);
+    renderReferenceOptions();
+
+    closeReferenceModal();
+    setStatus(`reference ${created.name} created`);
+}
+
 // saveSkill posts the form through the SaveSkill mutation and refreshes the
 // tree so the new dependency edges are drawn.
 const saveSkill = async () => {
@@ -758,11 +971,12 @@ const saveSkill = async () => {
         content,
         keywords,
         dependencies: selectedDependencies(),
+        references: selectedReferences(),
     };
 
     setStatus("saving…");
     const { data, error: err } = await query(
-        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content keywords dependencies { id name } } }`,
+        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content keywords dependencies { id name } references { referenceName } } }`,
         { variables: { input } },
     );
     if (err || !data || !data.SaveSkill) {

@@ -12,6 +12,16 @@
             </div>
         </div>
         <button type="button" id="skill-new" class="skill-square" title="new skill depending on this one" aria-label="new skill depending on this one">+</button>
+        <div id="skill-references" class="multiselect">
+            <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                <span class="multiselect-label">MultiSelect &lt;References&gt;</span>
+            </button>
+            <div class="multiselect-menu">
+                <input class="multiselect-search" type="search" placeholder="filter references" spellcheck="false" aria-label="filter references" />
+                <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+            </div>
+        </div>
+        <button type="button" id="reference-new" class="skill-square" title="new reference" aria-label="new reference">+</button>
     </div>
     <div class="skill-row">
         <input id="skill-description" class="skill-field" type="text" placeholder="description" spellcheck="false" />
@@ -54,3 +64,37 @@
         <button type="submit" id="skill-save" class="skill-button skill-save">Save</button>
     </div>
 </form>
+<div id="reference-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-modal-close></div>
+    <form id="reference-form" class="modal-panel" autocomplete="off" novalidate>
+        <div class="modal-title">New reference</div>
+        <label class="modal-field">
+            <span class="modal-label">name</span>
+            <input id="reference-name" class="skill-field" type="text" placeholder="name" spellcheck="false" required />
+        </label>
+        <label class="modal-field">
+            <span class="modal-label">description</span>
+            <input id="reference-description" class="skill-field" type="text" placeholder="description" spellcheck="false" required />
+        </label>
+        <label class="modal-field">
+            <span class="modal-label">type</span>
+            <select id="reference-type" class="skill-field">
+                <option value="literature" selected>literature</option>
+                <option value="image">image</option>
+                <option value="video">video</option>
+                <option value="commands">commands</option>
+                <option value="script">script</option>
+                <option value="configuration">configuration</option>
+            </select>
+        </label>
+        <label class="modal-field modal-field-grow">
+            <span class="modal-label">content</span>
+            <textarea id="reference-content" class="skill-content" spellcheck="false" placeholder="content" required></textarea>
+        </label>
+        <div class="modal-actions">
+            <span id="reference-status" class="skill-status" role="status"></span>
+            <button type="button" id="reference-cancel" class="skill-button">Cancel</button>
+            <button type="submit" id="reference-save" class="skill-button skill-save">Create</button>
+        </div>
+    </form>
+</div>
