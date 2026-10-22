@@ -243,7 +243,7 @@ body {
 }
 
 #chooser {
-    height: 200px;
+    height: 300px;
     min-height: 80px;
     flex: none;
     background: rgb(212, 212, 212);
@@ -552,5 +552,4 @@ body {
     justify-content: flex-end;
     align-items: center;
     gap: 6px;
-}
 }
