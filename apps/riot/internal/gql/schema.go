@@ -321,6 +321,14 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 				},
 				Resolve: r.bindAgentSkills,
 			},
+			"AddSkillDependencies": &graphql.Field{
+				Type: graphql.NewList(skillType),
+				Args: graphql.FieldConfigArgument{
+					"skillId":       &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"dependencyIds": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(graphql.String)))},
+				},
+				Resolve: r.addSkillDependencies,
+			},
 		},
 	})
 
@@ -575,6 +583,62 @@ func (r *resolver) bindAgentSkills(p graphql.ResolveParams) (interface{}, error)
 
 func (r *resolver) reference(p graphql.ResolveParams) (interface{}, error) {
 	return r.db.Reference.FindFirst(eq[orm.Reference, string]("name", p.Args["name"].(string))).Exec(r.ctx(p))
+}
+
+// addSkillDependencies attaches each dependency to the skill, leaving the
+// skill's existing dependencies alone. A pair already linked is skipped, so the
+// call is idempotent. It returns the skill's full dependency list afterwards.
+func (r *resolver) addSkillDependencies(p graphql.ResolveParams) (interface{}, error) {
+	skillID, _ := p.Args["skillId"].(string)
+	if skillID == "" {
+		return nil, fmt.Errorf("AddSkillDependencies: skillId is required")
+	}
+
+	dependencyIDs := make([]string, 0)
+	if raw, ok := p.Args["dependencyIds"].([]interface{}); ok {
+		for _, item := range raw {
+			if id, ok := item.(string); ok && id != "" && id != skillID {
+				dependencyIDs = append(dependencyIDs, id)
+			}
+		}
+	}
+
+	ctx := r.ctx(p)
+	err := r.db.Transaction(ctx, func(tx *orm.Tx) error {
+		for _, dependencyID := range dependencyIDs {
+			existing, err := tx.SkillDependency.FindFirst(
+				eq[orm.SkillDependency, string]("dependentId", skillID),
+				eq[orm.SkillDependency, string]("dependencyId", dependencyID),
+				eq[orm.SkillDependency, string]("agent", ""),
+			).Exec(ctx)
+			if err != nil {
+				return err
+			}
+			if existing != nil {
+				continue
+			}
+			if _, err := tx.SkillDependency.Create().
+				SetDependentId(skillID).
+				SetDependencyId(dependencyID).
+				SetAgent("").
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	skill, err := r.db.Skill.FindFirst(eq[orm.Skill, string]("id", skillID)).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if skill == nil {
+		return []*orm.Skill{}, nil
+	}
+	return r.skillDependencies(graphql.ResolveParams{Source: skill, Context: ctx})
 }
 
 func (r *resolver) references(p graphql.ResolveParams) (interface{}, error) {

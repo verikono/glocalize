@@ -27,6 +27,9 @@
 	var EDGE_POP_GAP = 10;
 	var EDGE_BOX = 11;
 
+	// the gap between a skill label's right edge and its add button.
+	var SKILL_ADD_GAP = 14;
+
 	var state = {
 		agents: [],
 		skills: [],
@@ -58,6 +61,21 @@
 		selected: new Set(),
 		priority: "NORMAL",
 	};
+
+	// skillAddState is the add-dependency interface: whether it is open, which
+	// skill it belongs to, which skills are ticked, and the search needle.
+	var skillAddState = {
+		open: false,
+		skillId: "",
+		selected: new Set(),
+		needle: "",
+	};
+
+	// hoveredSkillId is the skill whose add button is showing, and hoverTimer
+	// delays clearing it so the pointer can travel from the label to the button.
+	var hoveredSkillId = "";
+	var hoverTimer = null;
+	var pointer = { x: -1, y: -1 };
 
 	var query = async (document, variables) => {
 		try {
@@ -188,6 +206,11 @@
 		edgeState.ux = 0;
 		edgeState.uy = 0;
 		edgeState.useSubtree = false;
+		skillAddState.open = false;
+		skillAddState.skillId = "";
+		skillAddState.selected = new Set();
+		skillAddState.needle = "";
+		hoveredSkillId = "";
 
 		var heading = document.querySelector("#agent-name");
 		if (heading) heading.textContent = agent.name;
@@ -479,17 +502,25 @@
 			});
 
 		// hovering a node highlights the path back to the agent; clicking a skill
-		// opens it on the skills page.
+		// opens it on the skills page. A skill also reveals its add button, which
+		// is cleared on a delay so the pointer can travel from the label to it.
 		node.on("mouseenter", function (event, d) {
 			hoveredPath = new Set(d.ancestors());
 			paintEdges();
 			node.classed("active", function (n) {
 				return hoveredPath.has(n);
 			});
+			if (d.depth === 0) return;
+			clearTimeout(hoverTimer);
+			if (hoveredSkillId !== d.data.id) {
+				hoveredSkillId = d.data.id;
+				renderOverlay();
+			}
 		}).on("mouseleave", function () {
 			hoveredPath = null;
 			paintEdges();
 			node.classed("active", false);
+			scheduleHoverClear();
 		});
 
 		node.style("cursor", function (d) {
@@ -515,7 +546,217 @@
 		var renderOverlay = function () {
 			overlay.selectAll("*").remove();
 			renderAddControl();
+			renderSkillAddControl();
 			renderEdgeCallout();
+		};
+
+		// scheduleHoverClear hides the skill's add button after a short delay, so
+		// the pointer can cross the gap between the label and the button.
+		var scheduleHoverClear = function () {
+			clearTimeout(hoverTimer);
+			hoverTimer = setTimeout(function () {
+				if (skillAddState.open) return;
+				if (hoveredSkillId === "") return;
+				hoveredSkillId = "";
+				renderOverlay();
+			}, 220);
+		};
+
+		// renderSkillAddControl draws the round + button beside the hovered skill
+		// and, when open, its dependency list with a search needle and the
+		// confirm/cancel buttons. It offers only skills the tree does not show.
+		var renderSkillAddControl = function () {
+			if (hoveredSkillId === "" && !skillAddState.open) return;
+
+			var skillId = skillAddState.open ? skillAddState.skillId : hoveredSkillId;
+			var target = root.descendants().find(function (d) {
+				return d.data.id === skillId;
+			});
+			if (!target) return;
+
+			// the label's right edge in screen space, so the button tracks the tree
+			// as it is zoomed and panned.
+			var labelRight = view.x + view.k * (posX(target) + 8 + target.labelWidth);
+			var cy = view.y + view.k * posY(target);
+			var cx = labelRight + SKILL_ADD_GAP + ADD_R;
+			var top = cy - ADD_R;
+
+			var button = overlay.append("g").attr("class", "skill-add-button");
+			button.append("circle")
+				.attr("cx", cx)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(37, 37, 37)");
+			button.append("text")
+				.attr("x", cx)
+				.attr("y", cy)
+				.attr("dy", "0.35em")
+				.attr("text-anchor", "middle")
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("font-family", "sans-serif")
+				.attr("font-size", ADD_R * 0.96)
+				.text("+");
+
+			// entering the button keeps the skill hovered; leaving it schedules the
+			// clear, so the button disappears once the pointer moves away.
+			button.on("mouseenter", function () {
+				clearTimeout(hoverTimer);
+			}).on("mouseleave", function () {
+				scheduleHoverClear();
+			});
+
+			button.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				clearTimeout(hoverTimer);
+				if (skillAddState.open) {
+					closeSkillAddControl();
+					return;
+				}
+				skillAddState.open = true;
+				skillAddState.skillId = skillId;
+				skillAddState.selected = new Set();
+				skillAddState.needle = "";
+				renderOverlay();
+				svg.node().focus();
+			});
+
+			button.on("contextmenu", function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+				closeSkillAddControl();
+			});
+
+			if (!skillAddState.open) return;
+
+			var visible = visibleSkillIDs(root);
+			var term = skillAddState.needle.trim().toLowerCase();
+			var offered = state.skills
+				.filter(function (skill) {
+					if (visible.has(skill.id) || skill.id === skillId) return false;
+					if (!term) return true;
+					return String(skill.name || "").toLowerCase().includes(term);
+				})
+				.sort(byName);
+
+			// the list sits right of the button, with the needle as its first row.
+			var listX = cx + ADD_R + POP_GAP;
+			var listWidth = 260;
+			var needleH = POP_ITEM_H + POP_PAD;
+			var rowsTop = top + needleH;
+			var listHeight = needleH + POP_PAD + Math.max(offered.length, 1) * POP_ITEM_H;
+
+			var list = overlay.append("g").attr("class", "skill-add-list");
+			list.append("rect")
+				.attr("x", listX)
+				.attr("y", top)
+				.attr("width", listWidth)
+				.attr("height", listHeight)
+				.attr("rx", 4)
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("stroke", "rgb(37, 37, 37)")
+				.attr("stroke-width", 1);
+
+			// the needle row: a rule under it separates it from the list.
+			list.append("rect")
+				.attr("x", listX)
+				.attr("y", top + needleH - 1)
+				.attr("width", listWidth)
+				.attr("height", 1)
+				.attr("fill", "rgb(190, 190, 190)");
+
+			list.append("text")
+				.attr("x", listX + POP_PAD)
+				.attr("y", top + POP_PAD)
+				.attr("dy", "0.8em")
+				.attr("font-family", "sans-serif")
+				.attr("font-size", POP_ITEM_H)
+				.attr("fill", skillAddState.needle ? "rgb(37, 37, 37)" : "rgb(150, 150, 150)")
+				.text(skillAddState.needle || "search skills");
+
+			if (offered.length === 0) {
+				list.append("text")
+					.attr("x", listX + POP_PAD)
+					.attr("y", rowsTop + POP_PAD)
+					.attr("dy", "0.8em")
+					.attr("font-family", "sans-serif")
+					.attr("font-size", POP_ITEM_H)
+					.attr("fill", "rgb(110, 110, 110)")
+					.text(term ? "no matching skills" : "every skill is already shown");
+			}
+
+			offered.forEach(function (skill, index) {
+				var rowY = rowsTop + POP_PAD + index * POP_ITEM_H;
+				var row = list.append("g").attr("class", "skill-add-item");
+				var selected = skillAddState.selected.has(skill.id);
+
+				row.append("rect")
+					.attr("x", listX)
+					.attr("y", rowY)
+					.attr("width", listWidth)
+					.attr("height", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(37, 37, 37)" : "transparent");
+
+				row.append("text")
+					.attr("x", listX + POP_PAD)
+					.attr("y", rowY)
+					.attr("dy", "0.8em")
+					.attr("font-family", "sans-serif")
+					.attr("font-size", POP_ITEM_H)
+					.attr("fill", selected ? "rgb(255, 255, 255)" : "rgb(37, 37, 37)")
+					.text(skill.name);
+
+				row.style("cursor", "pointer").on("click", function (event) {
+					event.stopPropagation();
+					if (skillAddState.selected.has(skill.id)) skillAddState.selected.delete(skill.id);
+					else skillAddState.selected.add(skill.id);
+					renderOverlay();
+				});
+			});
+
+			// the confirm and cancel buttons, right of the list. There is no
+			// priority list here: a dependency has no priority of its own.
+			var confirmX = listX + listWidth + POP_GAP + ADD_R;
+			var cancelX = confirmX + ADD_R * 2 + POP_GAP + ADD_R;
+
+			var confirm = overlay.append("g").attr("class", "skill-add-confirm");
+			confirm.append("circle")
+				.attr("cx", confirmX)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(40, 150, 70)");
+			confirm.append("path")
+				.attr("d", "M" + (confirmX - ADD_R * 0.44) + "," + cy +
+					"L" + (confirmX - ADD_R * 0.12) + "," + (cy + ADD_R * 0.32) +
+					"L" + (confirmX + ADD_R * 0.48) + "," + (cy - ADD_R * 0.32))
+				.attr("fill", "none")
+				.attr("stroke", "rgb(255, 255, 255)")
+				.attr("stroke-width", ADD_R * 0.16)
+				.attr("stroke-linecap", "round")
+				.attr("stroke-linejoin", "round");
+			confirm.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				addSelectedDependencies(skillId);
+			});
+
+			var cancel = overlay.append("g").attr("class", "skill-add-cancel");
+			cancel.append("circle")
+				.attr("cx", cancelX)
+				.attr("cy", cy)
+				.attr("r", ADD_R)
+				.attr("fill", "rgb(190, 50, 50)");
+			cancel.append("path")
+				.attr("d", "M" + (cancelX - ADD_R * 0.36) + "," + (cy - ADD_R * 0.36) +
+					"L" + (cancelX + ADD_R * 0.36) + "," + (cy + ADD_R * 0.36) +
+					"M" + (cancelX + ADD_R * 0.36) + "," + (cy - ADD_R * 0.36) +
+					"L" + (cancelX - ADD_R * 0.36) + "," + (cy + ADD_R * 0.36))
+				.attr("fill", "none")
+				.attr("stroke", "rgb(255, 255, 255)")
+				.attr("stroke-width", ADD_R * 0.16)
+				.attr("stroke-linecap", "round");
+			cancel.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				closeSkillAddControl();
+			});
 		};
 
 		// renderAddControl draws the round + button beside the agent's name and,
@@ -746,6 +987,42 @@
 			renderOverlay();
 		};
 
+		// closeSkillAddControl drops the dependency interface and its button.
+		var closeSkillAddControl = function () {
+			skillAddState.open = false;
+			skillAddState.skillId = "";
+			skillAddState.selected = new Set();
+			skillAddState.needle = "";
+			hoveredSkillId = "";
+			clearTimeout(hoverTimer);
+			renderOverlay();
+		};
+
+		// addSelectedDependencies links the ticked skills to the hovered skill as
+		// its dependencies, then reloads the catalogue so the tree shows them.
+		var addSelectedDependencies = async function (skillId) {
+			var dependencyIds = Array.from(skillAddState.selected);
+			if (dependencyIds.length === 0) return;
+
+			var result = await query(
+				"mutation AddDeps($skillId: String!, $dependencyIds: [String!]!) { AddSkillDependencies(skillId: $skillId, dependencyIds: $dependencyIds) { id name } }",
+				{ skillId: skillId, dependencyIds: dependencyIds }
+			);
+			if (result.error) {
+				console.error("Agents: failed adding dependencies", result.error);
+				return;
+			}
+
+			closeSkillAddControl();
+
+			var agents = await loadAgents();
+			if (agents) state.agents = agents;
+			var refreshed = state.agents.find(function (candidate) {
+				return candidate.id === state.selected;
+			});
+			if (refreshed) renderAgentTree(refreshed);
+		};
+
 		// renderEdgeCallout draws the menu for the clicked agent-skill line: one
 		// "use sub-tree" row with a checkbox, hung just below and right of the
 		// anchor point so it never covers the line it belongs to. The anchor is in
@@ -886,9 +1163,34 @@
 				if (event.button === 1) event.preventDefault();
 			});
 
-			// a click on empty space dismisses the line menu.
+			// a click on empty space dismisses the line menu and the dependency
+			// interface.
 			svgNode.addEventListener("click", function () {
 				closeEdgeCallout();
+				if (skillAddState.open) closeSkillAddControl();
+			});
+
+			// the dependency list's needle is typed straight into the svg, which
+			// takes focus while the list is open.
+			svgNode.setAttribute("tabindex", "0");
+			svgNode.addEventListener("keydown", function (event) {
+				if (!skillAddState.open) return;
+				if (event.key === "Escape") {
+					event.preventDefault();
+					closeSkillAddControl();
+					return;
+				}
+				if (event.key === "Backspace") {
+					event.preventDefault();
+					skillAddState.needle = skillAddState.needle.slice(0, -1);
+					renderOverlay();
+					return;
+				}
+				if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+					event.preventDefault();
+					skillAddState.needle += event.key;
+					renderOverlay();
+				}
 			});
 		};
 
