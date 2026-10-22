@@ -1396,7 +1396,8 @@ const skillTreeSvg = (el, label) => {
 
 // skillTreeFitAndZoom fits the viewBox to the drawn content, then wires wheel
 // zoom about the pointer and double-click to reset. The zoom is remembered on
-// the element, keyed by the tree it belongs to, so a resize keeps the view.
+// the element, so a resize keeps the view and a new search keeps the user's
+// framing instead of snapping back to a fit.
 //
 // options.fit selects the initial framing: "content" (the default) fits the
 // whole drawing into the stage; "width" fits the drawing's width to the stage,
@@ -1409,7 +1410,16 @@ const skillTreeSvg = (el, label) => {
 // options.centreX and options.centreY are the drawing-space point the initial
 // view is centred on; they default to the middle of the drawing.
 const skillTreeFitAndZoom = (el, svg, treeData, options = {}) => {
-    if (el.__skillTree !== treeData) el.__skillTreeZoom = null;
+    // a new tree within the same view means a new search, so the previous
+    // framing is carried over rather than discarded. A different view is a
+    // different coordinate space, and a resize is the same drawing, so both
+    // keep the old behaviour.
+    const sameView = el.__skillTreeView === viewState.view;
+    const treeChanged = el.__skillTree !== treeData;
+    const previous = sameView && treeChanged ? el.__skillTreeZoom : null;
+    const previousPxPerUnit = sameView && treeChanged ? el.__skillTreePxPerUnit : 0;
+    if (!sameView) el.__skillTreeZoom = null;
+    el.__skillTreeView = viewState.view;
     el.__skillTree = treeData;
 
     const bounds = svg.node().getBBox();
@@ -1457,8 +1467,42 @@ const skillTreeFitAndZoom = (el, svg, treeData, options = {}) => {
         return [cx - baseW / (2 * k), cy - baseH / (2 * k), baseW / k, baseH / k];
     };
 
+    // carryZoom re-expresses the previous framing against the new base view, so
+    // a search keeps the user's scale and centre instead of re-fitting. The
+    // scale is preserved in user-units-per-pixel, and the centre is clamped
+    // into the new drawing so the view never lands on empty space.
+    const carryZoom = () => {
+        if (!previous || !previousPxPerUnit) return null;
+
+        // the same on-screen scale, re-expressed against the new base view. The
+        // zoom-out floor is deliberately not applied: the user's own scale wins
+        // over the fit, even when the new drawing fits larger than it.
+        const k = Math.min(previousPxPerUnit / scaleAtK1, maxK);
+        if (!(k > 0)) return null;
+        const halfW = baseW / (2 * k);
+        const halfH = baseH / (2 * k);
+        const clamp = (value, min, max) => (max < min ? (min + max) / 2 : Math.min(Math.max(value, min), max));
+
+        return {
+            k,
+            cx: clamp(previous.cx, bx + halfW, bx + bw - halfW),
+            cy: clamp(previous.cy, by + halfH, by + bh - halfH),
+        };
+    };
+
+    const carried = carryZoom();
+    if (carried) el.__skillTreeZoom = carried;
+
     const svgNode = svg.node();
     svg.attr("viewBox", viewFor(el.__skillTreeZoom).join(" "));
+
+    // remember the framing in a form the next search can re-express: the
+    // on-screen scale, in screen pixels per user unit.
+    const rememberZoom = () => {
+        const zoom = el.__skillTreeZoom || initialZoom;
+        el.__skillTreePxPerUnit = zoom.k * scaleAtK1;
+    };
+    rememberZoom();
 
     svgNode.addEventListener("wheel", (event) => {
         event.preventDefault();
@@ -1480,11 +1524,13 @@ const skillTreeFitAndZoom = (el, svg, treeData, options = {}) => {
             cy: point.y + (old.cy - point.y) * ratio,
         };
         svg.attr("viewBox", viewFor(el.__skillTreeZoom).join(" "));
+        rememberZoom();
     }, { passive: false });
 
     svgNode.addEventListener("dblclick", (event) => {
         if (event.target !== svgNode) return;
         el.__skillTreeZoom = null;
+        el.__skillTreePxPerUnit = 0;
         svg.attr("viewBox", viewFor(null).join(" "));
     });
 
@@ -1516,6 +1562,7 @@ const skillTreeFitAndZoom = (el, svg, treeData, options = {}) => {
             cy: panStart.zoom.cy - baseDy,
         };
         svg.attr("viewBox", viewFor(el.__skillTreeZoom).join(" "));
+        rememberZoom();
     };
 
     const onPanUp = (event) => {
