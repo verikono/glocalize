@@ -278,7 +278,31 @@ body {
 }
 
 .skill-row-top {
-    align-items: stretch;
+    align-items: flex-end;
+}
+
+/* a labelled control: the label sits above the input it names. The group is
+   the flex child that grows, so the input inside it fills the width. */
+.skill-field-group {
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.skill-group-name {
+    flex: 1;
+}
+
+.skill-group-content {
+    flex: 1;
+    min-height: 0;
+}
+
+.skill-label {
+    flex: none;
+    font-size: 11px;
+    color: rgb(110, 110, 110);
 }
 
 .skill-field {
@@ -286,6 +310,7 @@ body {
     background: rgb(240, 240, 240);
     padding: 4px 6px;
     font: inherit;
+    line-height: 16px;
     color: inherit;
     min-width: 0;
 }
@@ -345,6 +370,8 @@ body {
 
 .skill-square {
     width: 26px;
+    height: 26px;
+    flex: none;
     border: 1px solid rgb(120, 120, 120);
     background: rgb(240, 240, 240);
     font: inherit;
@@ -367,12 +394,19 @@ body {
     min-width: 0;
 }
 
+/* inside a labelled group the multiselect is a row of fixed height, not a
+   growing column child. */
+.skill-field-group .multiselect {
+    flex: none;
+}
+
 .multiselect-toggle {
     width: 100%;
     border: 1px solid rgb(120, 120, 120);
     background: rgb(240, 240, 240);
     padding: 4px 6px;
     font: inherit;
+    line-height: 16px;
     color: inherit;
     cursor: pointer;
     text-align: left;

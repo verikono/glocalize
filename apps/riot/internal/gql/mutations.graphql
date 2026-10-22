@@ -9,6 +9,8 @@
 # dependency of this skill, and every id not listed is detached.
 # `references` REPLACES the skill's reference set the same way: the join rows
 # are rewritten, and the Reference records themselves are never deleted.
+# `projects` REPLACES the skill's project assignments the same way, keyed by
+# project name. Omitting it leaves the assignments untouched.
 input SkillInput {
 	id: String
 	name: String!
@@ -18,6 +20,7 @@ input SkillInput {
 	keywords: String
 	dependencies: [String!]
 	references: [String!]
+	projects: [String!]
 }
 
 # ReferenceInput is the write shape for a reference. `name` is the unique

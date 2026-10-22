@@ -90,6 +90,20 @@ const loadReferences = async () => {
     renderReferenceOptions();
 }
 
+// loadProjects fetches the project catalogue into chooserState and redraws the
+// project multiselect. A failure is reported in the form's status line rather
+// than thrown: the skill form still works without projects.
+const loadProjects = async () => {
+    const { data, error: err } = await query(`{ Projects { name } }`);
+    if (err || !data) {
+        console.error("Projects: failed getting data", err);
+        setStatus("failed to load projects", true);
+        return;
+    }
+    chooserState.projects = data.Projects || [];
+    renderProjectOptions();
+}
+
 // query posts a graphql document to /graph and returns { data, error }.
 // It is synchronous in shape only: callers await the returned promise.
 const query = async (document, props = {}) => {
@@ -137,6 +151,11 @@ const chooserState = {
     references: [],
     selectedReferences: new Set(),
     referenceFilter: "",
+    // the project catalogue, and the names of the projects the skill is
+    // assigned to. Projects are identified by name, not id.
+    projects: [],
+    selectedProjects: new Set(),
+    projectFilter: "",
 };
 
 // pillarHover tracks the focused-pillar row the pointer is over, so a ctrl
@@ -218,6 +237,9 @@ const main = async (loaded,) => {
     // the reference catalogue is loaded alongside the skills; the reference
     // multiselect and the create modal both read it.
     await loadReferences();
+
+    // the project catalogue backs the project multiselect.
+    await loadProjects();
 
     // a ?subject=<name>&class=skill url opens straight onto that skill.
     const subject = params.get("subject");
@@ -492,7 +514,7 @@ const wirePillarCreate = () => {
 const selectSkill = async (name, options = {}) => {
     const { push = true } = options;
     const { data, error: err } = await query(
-        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content keywords dependencies { id name } references { referenceName reference { name description accessType resourceType content } } } }`,
+        `query SkillByName($name: String!) { Skill(name: $name) { id name description url content keywords dependencies { id name } references { referenceName reference { name description accessType resourceType content } } projects { name } } }`,
         { variables: { name } },
     );
     if (err || !data || !data.Skill) {
@@ -535,6 +557,8 @@ const cloneSkill = (skill) => ({
     references: (skill.references || [])
         .map(row => row.referenceName || (row.reference && row.reference.name) || "")
         .filter(Boolean),
+    // projects are identified by name, the join row's own key.
+    projects: (skill.projects || []).map(project => project.name).filter(Boolean),
 });
 
 // wireChooser binds the form once: the multiselects, the new-skill and
@@ -558,6 +582,14 @@ const wireChooser = () => {
         select: (name) => chooserState.selectedReferences.add(name),
         deselect: (name) => chooserState.selectedReferences.delete(name),
         render: renderReferenceOptions,
+    });
+
+    wireMultiselect("#skill-projects", {
+        getFilter: () => chooserState.projectFilter,
+        setFilter: (value) => { chooserState.projectFilter = value; },
+        select: (name) => chooserState.selectedProjects.add(name),
+        deselect: (name) => chooserState.selectedProjects.delete(name),
+        render: renderProjectOptions,
     });
 
     document.querySelector("#skill-new").addEventListener("click", () => {
@@ -703,6 +735,7 @@ const enterCreateState = (dependency = "") => {
         keywords: "",
         dependencies: id ? [id] : [],
         references: [],
+        projects: [],
     });
 
     setStatus(known ? `new skill depending on ${known.name}` : "new skill");
@@ -744,6 +777,13 @@ const fillForm = (skill) => {
     const referenceSearch = document.querySelector("#skill-references .multiselect-search");
     if (referenceSearch) referenceSearch.value = "";
     renderReferenceOptions();
+
+    // and the project multiselect.
+    chooserState.selectedProjects = new Set(skill.projects || []);
+    chooserState.projectFilter = "";
+    const projectSearch = document.querySelector("#skill-projects .multiselect-search");
+    if (projectSearch) projectSearch.value = "";
+    renderProjectOptions();
 }
 
 // renderDependencyOptions lists the catalogue as checkboxes, alphabetically,
@@ -865,6 +905,62 @@ const updateReferenceLabel = () => {
 // selectedReferences returns the names of the checked references.
 const selectedReferences = () => Array.from(chooserState.selectedReferences);
 
+// renderProjectOptions lists the project catalogue as checkboxes,
+// alphabetically, narrowed by the current filter and checked from
+// chooserState.selectedProjects. Projects are keyed by name.
+const renderProjectOptions = () => {
+    const list = document.querySelector("#skill-projects .multiselect-options");
+    if (!list) return;
+
+    const filter = chooserState.projectFilter;
+
+    list.textContent = "";
+
+    const options = chooserState.projects
+        .filter(project => !filter || String(project.name || "").toLowerCase().includes(filter))
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+
+    if (options.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "multiselect-empty";
+        empty.textContent = filter ? "no matching projects" : "no projects";
+        list.appendChild(empty);
+        updateProjectLabel();
+        return;
+    }
+
+    for (const project of options) {
+        const label = document.createElement("label");
+        label.className = "multiselect-option";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = project.name;
+        input.checked = chooserState.selectedProjects.has(project.name);
+
+        const text = document.createElement("span");
+        text.textContent = project.name;
+
+        label.appendChild(input);
+        label.appendChild(text);
+        list.appendChild(label);
+    }
+    updateProjectLabel();
+}
+
+// updateProjectLabel summarises the checked projects on the toggle.
+const updateProjectLabel = () => {
+    const label = document.querySelector("#skill-projects .multiselect-label");
+    if (!label) return;
+    const checked = Array.from(chooserState.selectedProjects).sort((a, b) => String(a).localeCompare(String(b)));
+    label.textContent = checked.length === 0
+        ? "MultiSelect <Projects>"
+        : checked.join(", ");
+}
+
+// selectedProjects returns the names of the checked projects.
+const selectedProjects = () => Array.from(chooserState.selectedProjects);
+
 // openReferenceModal shows the create-reference modal with a clean form.
 const openReferenceModal = () => {
     const modal = document.querySelector("#reference-modal");
@@ -972,11 +1068,12 @@ const saveSkill = async () => {
         keywords,
         dependencies: selectedDependencies(),
         references: selectedReferences(),
+        projects: selectedProjects(),
     };
 
     setStatus("saving…");
     const { data, error: err } = await query(
-        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content keywords dependencies { id name } references { referenceName } } }`,
+        `mutation SaveSkill($input: SkillInput!) { SaveSkill(input: $input) { id name description url content keywords dependencies { id name } references { referenceName } projects { name } } }`,
         { variables: { input } },
     );
     if (err || !data || !data.SaveSkill) {

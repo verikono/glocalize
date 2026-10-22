@@ -160,6 +160,10 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 		},
 	})
 
+	// projects is the reverse of Project.skills: the projects a skill is
+	// assigned to, bridged through the ProjectSkill join table.
+	skillType.AddFieldConfig("projects", &graphql.Field{Type: graphql.NewList(projectType), Resolve: r.skillProjects})
+
 	documentType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Document",
 		Fields: graphql.Fields{
@@ -273,6 +277,7 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 			"keywords":     &graphql.InputObjectFieldConfig{Type: graphql.String},
 			"dependencies": &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
 			"references":   &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
+			"projects":     &graphql.InputObjectFieldConfig{Type: graphql.NewList(graphql.NewNonNull(graphql.String))},
 		},
 	})
 
@@ -407,6 +412,21 @@ func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
 		}
 	}
 
+	// projects REPLACES the skill's project assignments the same way: the join
+	// rows are rewritten and the Project records themselves are never deleted.
+	// A nil list leaves the assignments untouched, so a caller that does not
+	// know about projects cannot silently unassign every one of them.
+	projectNames := make([]string, 0)
+	replaceProjects := false
+	if raw, ok := input["projects"].([]interface{}); ok {
+		replaceProjects = true
+		for _, item := range raw {
+			if name, ok := item.(string); ok && name != "" {
+				projectNames = append(projectNames, name)
+			}
+		}
+	}
+
 	ctx := r.ctx(p)
 
 	var saved *orm.Skill
@@ -461,6 +481,21 @@ func (r *resolver) saveSkill(p graphql.ResolveParams) (interface{}, error) {
 				SetReferenceName(referenceName).
 				Exec(ctx); err != nil {
 				return err
+			}
+		}
+
+		// replace the project assignments only when the caller supplied a list.
+		if replaceProjects {
+			if _, err := tx.ProjectSkill.DeleteMany(eq[orm.ProjectSkill, string]("skillId", saved.Id)).Exec(ctx); err != nil {
+				return err
+			}
+			for _, projectName := range projectNames {
+				if _, err := tx.ProjectSkill.Create().
+					SetProjectName(projectName).
+					SetSkillId(saved.Id).
+					Exec(ctx); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -742,6 +777,27 @@ func (r *resolver) skillDependents(p graphql.ResolveParams) (interface{}, error)
 		ids = append(ids, row.DependentId)
 	}
 	return r.skillsByIDs(p, ids)
+}
+
+// skillProjects returns the projects this skill is assigned to, bridged
+// through the ProjectSkill join table.
+func (r *resolver) skillProjects(p graphql.ResolveParams) (interface{}, error) {
+	skill, ok := p.Source.(*orm.Skill)
+	if !ok || skill == nil {
+		return []*orm.Project{}, nil
+	}
+	rows, err := r.db.ProjectSkill.FindMany(eq[orm.ProjectSkill, string]("skillId", skill.Id)).Exec(r.ctx(p))
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.ProjectName)
+	}
+	if len(names) == 0 {
+		return []*orm.Project{}, nil
+	}
+	return r.db.Project.FindMany(orm.Field[orm.Project, string]{Column: "name"}.In(names)).Exec(r.ctx(p))
 }
 
 // skillReferences returns the join rows attaching references to this skill.

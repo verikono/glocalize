@@ -1,36 +1,68 @@
 <form id="skill-form" class="skill-form" autocomplete="off" novalidate>
     <div id="skill-title" class="skill-title"></div>
     <div class="skill-row skill-row-top">
-        <input id="skill-name" class="skill-field skill-name" type="text" placeholder="name" spellcheck="false" />
-        <div id="skill-dependencies" class="multiselect">
-            <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
-                <span class="multiselect-label">MultiSelect &lt;Dependencies&gt;</span>
-            </button>
-            <div class="multiselect-menu">
-                <input class="multiselect-search" type="search" placeholder="filter skills" spellcheck="false" aria-label="filter skills" />
-                <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+        <label class="skill-field-group skill-group-name">
+            <span class="skill-label">name</span>
+            <input id="skill-name" class="skill-field skill-name" type="text" placeholder="name" spellcheck="false" />
+        </label>
+        <div class="skill-field-group">
+            <span class="skill-label">skill dependencies</span>
+            <div id="skill-dependencies" class="multiselect">
+                <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="multiselect-label">MultiSelect &lt;Dependencies&gt;</span>
+                </button>
+                <div class="multiselect-menu">
+                    <input class="multiselect-search" type="search" placeholder="filter skills" spellcheck="false" aria-label="filter skills" />
+                    <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+                </div>
             </div>
         </div>
         <button type="button" id="skill-new" class="skill-square" title="new skill depending on this one" aria-label="new skill depending on this one">+</button>
-        <div id="skill-references" class="multiselect">
-            <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
-                <span class="multiselect-label">MultiSelect &lt;References&gt;</span>
-            </button>
-            <div class="multiselect-menu">
-                <input class="multiselect-search" type="search" placeholder="filter references" spellcheck="false" aria-label="filter references" />
-                <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+        <div class="skill-field-group">
+            <span class="skill-label">skill references</span>
+            <div id="skill-references" class="multiselect">
+                <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="multiselect-label">MultiSelect &lt;References&gt;</span>
+                </button>
+                <div class="multiselect-menu">
+                    <input class="multiselect-search" type="search" placeholder="filter references" spellcheck="false" aria-label="filter references" />
+                    <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+                </div>
             </div>
         </div>
         <button type="button" id="reference-new" class="skill-square" title="new reference" aria-label="new reference">+</button>
+        <div class="skill-field-group">
+            <span class="skill-label">projects</span>
+            <div id="skill-projects" class="multiselect">
+                <button type="button" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="multiselect-label">MultiSelect &lt;Projects&gt;</span>
+                </button>
+                <div class="multiselect-menu">
+                    <input class="multiselect-search" type="search" placeholder="filter projects" spellcheck="false" aria-label="filter projects" />
+                    <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
+                </div>
+            </div>
+        </div>
     </div>
     <div class="skill-row">
-        <input id="skill-description" class="skill-field" type="text" placeholder="description" spellcheck="false" />
-        <input id="skill-url" class="skill-field" type="text" placeholder="url" spellcheck="false" />
+        <label class="skill-field-group">
+            <span class="skill-label">description</span>
+            <input id="skill-description" class="skill-field" type="text" placeholder="description" spellcheck="false" />
+        </label>
+        <label class="skill-field-group">
+            <span class="skill-label">url</span>
+            <input id="skill-url" class="skill-field" type="text" placeholder="url" spellcheck="false" />
+        </label>
     </div>
     <div class="skill-row">
-        <input id="skill-keywords" class="skill-field" type="text" placeholder="keywords (space separated, searchable)" spellcheck="false" />
+        <label class="skill-field-group">
+            <span class="skill-label">keywords</span>
+            <input id="skill-keywords" class="skill-field" type="text" placeholder="keywords (space separated, searchable)" spellcheck="false" />
+        </label>
     </div>
-    <textarea id="skill-content" class="skill-content" spellcheck="false" placeholder="# &lt;skill-name&gt;
+    <label class="skill-field-group skill-group-content">
+        <span class="skill-label">content</span>
+        <textarea id="skill-content" class="skill-content" spellcheck="false" placeholder="# &lt;skill-name&gt;
 
 &lt;One sentence: what this skill lets an agent do.&gt;
 
@@ -58,6 +90,7 @@
 - [ ] &lt;observable result&gt;
 - [ ] &lt;observable result&gt;
 "></textarea>
+    </label>
     <div class="skill-row skill-actions">
         <span class="skill-status" role="status"></span>
         <button type="button" id="skill-revert" class="skill-button">Revert</button>
