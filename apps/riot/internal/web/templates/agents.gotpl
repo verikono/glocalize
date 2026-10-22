@@ -1,5 +1,5 @@
 <aside id="agents-list" class="agents-list">
-    <input id="agents-search" class="agents-search" type="search" placeholder="search agents" spellcheck="false" aria-label="search agents" />
+    <input id="agents-search" class="agents-search" type="search" placeholder="search agents" title="prefix with ! to exclude" spellcheck="false" aria-label="search agents" />
     <div id="agents-items" class="agents-items" aria-label="agents"></div>
 </aside>
 <div id="agents-resizer" class="agents-resizer" role="separator" aria-orientation="vertical" aria-label="resize agent list" tabindex="0"></div>

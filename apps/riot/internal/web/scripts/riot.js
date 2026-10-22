@@ -336,6 +336,26 @@ const wireNavigation = () => {
     });
 }
 
+// searchTerm splits a term into its needle and whether a leading "!" negates it.
+const searchTerm = (term) => {
+    const raw = String(term || "").trim().toLowerCase();
+    const negated = raw.startsWith("!");
+    return { needle: negated ? raw.slice(1).trim() : raw, negated };
+}
+
+// makeMatcher turns a search term into a predicate over a haystack string. A
+// leading "!" reverses the test, so "!kaltra" keeps everything without kaltra.
+const makeMatcher = (term) => {
+    const { needle, negated } = searchTerm(term);
+    if (!needle) return () => true;
+    return (haystack) => String(haystack || "").toLowerCase().includes(needle) !== negated;
+}
+
+// isNegated reports whether a term excludes rather than selects, so callers can
+// keep an excluded skill out of the drawing entirely instead of pulling it back
+// in as a dependency of a match.
+const isNegated = (term) => searchTerm(term).negated;
+
 // applySearch rebuilds the hierarchy from the catalogue, keeping only skills
 // whose name matches and every dependency beneath them. The term is written
 // back to the ?search= param so the narrowed graph can be linked to.
@@ -795,12 +815,13 @@ const renderDependencyOptions = () => {
 
     const selfId = chooserState.isNew ? "" : (chooserState.loaded && chooserState.loaded.id) || "";
     const filter = chooserState.filter;
+    const matches = makeMatcher(filter);
 
     list.textContent = "";
 
     const options = chooserState.skills
         .filter(skill => skill.id !== selfId)
-        .filter(skill => !filter || String(skill.name || "").toLowerCase().includes(filter))
+        .filter(skill => matches(skill.name))
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
     if (options.length === 0) {
@@ -857,11 +878,12 @@ const renderReferenceOptions = () => {
     if (!list) return;
 
     const filter = chooserState.referenceFilter;
+    const matches = makeMatcher(filter);
 
     list.textContent = "";
 
     const options = chooserState.references
-        .filter(reference => !filter || String(reference.name || "").toLowerCase().includes(filter))
+        .filter(reference => matches(reference.name))
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
     if (options.length === 0) {
@@ -913,11 +935,12 @@ const renderProjectOptions = () => {
     if (!list) return;
 
     const filter = chooserState.projectFilter;
+    const matches = makeMatcher(filter);
 
     list.textContent = "";
 
     const options = chooserState.projects
-        .filter(project => !filter || String(project.name || "").toLowerCase().includes(filter))
+        .filter(project => matches(project.name))
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
     if (options.length === 0) {
@@ -1198,6 +1221,14 @@ const buildSkillHierarchy = (data, search = "") => {
     };
     skills.forEach(index);
 
+    // the roots are the whole catalogue, or just the search matches. A skill
+    // matches on its name or on any of its keywords.
+    const matches = makeMatcher(term);
+    const hit = (skill) => matches(`${skill.name || ""} ${skill.keywords || ""}`);
+    // an exclusion is strict: an excluded skill is not drawn even as a
+    // dependency of a match, which is the opposite of the inclusion rule.
+    const strict = isNegated(term);
+
     const placed = new Set();
     const build = (skill) => {
         placed.add(skill.id);
@@ -1211,22 +1242,16 @@ const buildSkillHierarchy = (data, search = "") => {
         };
         for (const dep of skill.dependencies || []) {
             if (placed.has(dep.id)) continue;
-            node.children.push(build(byId.get(dep.id) || dep));
+            const full = byId.get(dep.id) || dep;
+            if (strict && !hit(full)) continue;
+            node.children.push(build(full));
         }
         return node;
     };
 
     const root = { id: "__root__", name: "skills", description: "", url: "", children: [] };
 
-    // the roots are the whole catalogue, or just the search matches. A skill
-    // matches on its name or on any of its keywords.
-    const matches = (skill) => {
-        const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
-        return haystack.includes(term);
-    };
-    const roots = term
-        ? skills.filter(matches)
-        : skills;
+    const roots = term ? skills.filter(hit) : skills;
 
     for (const skill of roots) {
         if (placed.has(skill.id)) continue;
@@ -1272,16 +1297,24 @@ const buildDependentHierarchy = (data, search = "") => {
     // match brings in what it depends on and what depends on it.
     let visible = null;
     if (term) {
-        const matches = (skill) => `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase().includes(term);
-        visible = new Set();
-        const stack = [...byId.values()].filter(matches).map(skill => skill.id);
-        while (stack.length) {
-            const id = stack.pop();
-            if (visible.has(id)) continue;
-            visible.add(id);
-            const skill = byId.get(id);
-            for (const dep of (skill && skill.dependencies) || []) stack.push(dep.id);
-            for (const dependent of dependents.get(id) || []) stack.push(dependent.id);
+        const matches = makeMatcher(term);
+        const hit = (skill) => matches(`${skill.name || ""} ${skill.keywords || ""}`);
+        const matched = [...byId.values()].filter(hit).map(skill => skill.id);
+        if (isNegated(term)) {
+            // an exclusion keeps only the matches themselves; walking the edges
+            // would drag the excluded skills straight back in.
+            visible = new Set(matched);
+        } else {
+            visible = new Set();
+            const stack = [...matched];
+            while (stack.length) {
+                const id = stack.pop();
+                if (visible.has(id)) continue;
+                visible.add(id);
+                const skill = byId.get(id);
+                for (const dep of (skill && skill.dependencies) || []) stack.push(dep.id);
+                for (const dependent of dependents.get(id) || []) stack.push(dependent.id);
+            }
         }
     }
 
@@ -1863,12 +1896,13 @@ const buildDependentIndex = (skills) => {
 }
 
 // buildEdgeTree turns one skill into a hierarchy that follows `edges`, with the
-// skill itself as the root. `seen` keeps a cycle from recursing forever.
-const buildEdgeTree = (skill, edges, seen) => {
+// skill itself as the root. `seen` keeps a cycle from recursing forever, and
+// `keep` drops a node the search excludes.
+const buildEdgeTree = (skill, edges, seen, keep = () => true) => {
     const walk = (node) => {
         const children = [];
         for (const next of edges.get(node.id) || []) {
-            if (seen.has(next.id)) continue;
+            if (seen.has(next.id) || !keep(next)) continue;
             seen.add(next.id);
             children.push(walk(next));
         }
@@ -1913,11 +1947,12 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     const leftPad = 20;
     const rightPad = 40;
 
-    const matches = (skill) => {
-        const haystack = `${skill.name || ""} ${skill.keywords || ""}`.toLowerCase();
-        return haystack.includes(term);
-    };
-    const rows = (term ? skills.filter(matches) : skills.slice())
+    const matches = makeMatcher(term);
+    const hit = (skill) => matches(`${skill.name || ""} ${skill.keywords || ""}`);
+    // an exclusion is strict: an excluded skill is not drawn even as a
+    // dependency or dependent of a match.
+    const keep = isNegated(term) ? hit : () => true;
+    const rows = (term ? skills.filter(hit) : skills.slice())
         .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 
     // lay every row out first: the two trees' vertical extents decide the row's
@@ -1927,10 +1962,10 @@ const renderFocusedPillarSkillTree = (el, treeData) => {
     let maxDependentDepth = 0;
 
     const layouts = rows.map((skill) => {
-        const depRoot = d3.hierarchy(buildEdgeTree(skill, dependencies, new Set([skill.id])));
+        const depRoot = d3.hierarchy(buildEdgeTree(skill, dependencies, new Set([skill.id]), keep));
         d3.tree().nodeSize([nodeRowHeight, columnWidth])(depRoot);
 
-        const dependentRoot = d3.hierarchy(buildEdgeTree(skill, dependents, new Set([skill.id])));
+        const dependentRoot = d3.hierarchy(buildEdgeTree(skill, dependents, new Set([skill.id]), keep));
         d3.tree().nodeSize([nodeRowHeight, columnWidth])(dependentRoot);
 
         const xs = [...depRoot.descendants(), ...dependentRoot.descendants()].map(d => d.x);

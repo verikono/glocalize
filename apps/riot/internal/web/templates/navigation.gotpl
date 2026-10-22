@@ -4,5 +4,5 @@
 </nav>
 <div class="nav-search-wrap">
     <span id="nav-status" class="nav-status" role="status"></span>
-    <input id="nav-search" class="nav-search" type="search" placeholder="search skills" spellcheck="false" aria-label="search skills" />
+    <input id="nav-search" class="nav-search" type="search" placeholder="search skills" title="prefix with ! to exclude" spellcheck="false" aria-label="search skills" />
 </div>

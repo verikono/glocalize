@@ -120,6 +120,17 @@
 		return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
 	};
 
+	// matchesTerm tests a haystack against the filter. A leading "!" reverses
+	// the test, so "!kaltra" keeps everything without kaltra.
+	var matchesTerm = function (haystack, term) {
+		var raw = String(term || "").trim().toLowerCase();
+		var negated = raw.charAt(0) === "!";
+		var needle = negated ? raw.slice(1).trim() : raw;
+		if (!needle) return true;
+		var found = String(haystack || "").toLowerCase().indexOf(needle) !== -1;
+		return negated ? !found : found;
+	};
+
 	var renderList = function () {
 		var list = document.querySelector("#agents-items");
 		if (!list) return;
@@ -127,8 +138,7 @@
 		var term = state.filter.trim().toLowerCase();
 		var agents = state.agents
 			.filter(function (agent) {
-				if (!term) return true;
-				return String(agent.name || "").toLowerCase().includes(term);
+				return matchesTerm(agent.name, term);
 			})
 			.sort(byName);
 

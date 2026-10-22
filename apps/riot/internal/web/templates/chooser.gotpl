@@ -12,7 +12,7 @@
                     <span class="multiselect-label">MultiSelect &lt;Dependencies&gt;</span>
                 </button>
                 <div class="multiselect-menu">
-                    <input class="multiselect-search" type="search" placeholder="filter skills" spellcheck="false" aria-label="filter skills" />
+                    <input class="multiselect-search" type="search" placeholder="filter skills" title="prefix with ! to exclude" spellcheck="false" aria-label="filter skills" />
                     <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
                 </div>
             </div>
@@ -25,7 +25,7 @@
                     <span class="multiselect-label">MultiSelect &lt;References&gt;</span>
                 </button>
                 <div class="multiselect-menu">
-                    <input class="multiselect-search" type="search" placeholder="filter references" spellcheck="false" aria-label="filter references" />
+                    <input class="multiselect-search" type="search" placeholder="filter references" title="prefix with ! to exclude" spellcheck="false" aria-label="filter references" />
                     <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
                 </div>
             </div>
@@ -38,7 +38,7 @@
                     <span class="multiselect-label">MultiSelect &lt;Projects&gt;</span>
                 </button>
                 <div class="multiselect-menu">
-                    <input class="multiselect-search" type="search" placeholder="filter projects" spellcheck="false" aria-label="filter projects" />
+                    <input class="multiselect-search" type="search" placeholder="filter projects" title="prefix with ! to exclude" spellcheck="false" aria-label="filter projects" />
                     <div class="multiselect-options" role="listbox" aria-multiselectable="true"></div>
                 </div>
             </div>
