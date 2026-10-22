@@ -40,6 +40,8 @@ var DependencyId = riot.StringField[riot.SkillDependency]{Column: "dependencyId"
 
 var DependentId = riot.StringField[riot.SkillDependency]{Column: "dependentId"}
 
+var Recursive = riot.Field[riot.SkillDependency, bool]{Column: "recursive"}
+
 type dependencyId_DependentId struct {
 	riot.CompositeUniqueConstraint[riot.SkillDependency]
 	Column string

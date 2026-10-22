@@ -194,6 +194,10 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 				Via:         parentName,
 			}
 			order = append(order, depSkill.Name)
+			// a non-recursive edge loads the dependency and stops there.
+			if !dep.Recursive {
+				continue
+			}
 			if _, seen := visited[depSkill.Name]; !seen {
 				visited[depSkill.Name] = struct{}{}
 				frontier = append(frontier, depSkill.Name)
@@ -544,9 +548,16 @@ func (m *RiotMcp) onDeleteSkill(ctx context.Context, request mcp.CallToolRequest
 // mutate-skill. Add and Remove hold skill ids or names; Replace voids every
 // association on that side before Add is applied.
 type associationMutation struct {
-	Add     []string
+	Add     []associationEdge
 	Remove  []string
 	Replace bool
+}
+
+// associationEdge is one association to add. Recursive is nil when the caller
+// did not say, in which case the column default applies.
+type associationEdge struct {
+	Key       string
+	Recursive *bool
 }
 
 // parseAssociationMutation reads an association object from the mutation.
@@ -556,12 +567,41 @@ func parseAssociationMutation(raw any) (associationMutation, error) {
 	if !ok || obj == nil {
 		return out, nil
 	}
-	out.Add = stringSlice(obj["add"])
+	out.Add = associationEdges(obj["add"])
 	out.Remove = stringSlice(obj["remove"])
 	if v, ok := obj["replace"].(bool); ok {
 		out.Replace = v
 	}
 	return out, nil
+}
+
+// associationEdges reads an add array whose items are either a skill key or an
+// object of the form {"key": ..., "recursive": bool}.
+func associationEdges(raw any) []associationEdge {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]associationEdge, 0, len(items))
+	for _, item := range items {
+		switch v := item.(type) {
+		case string:
+			if key := strings.TrimSpace(v); key != "" {
+				out = append(out, associationEdge{Key: key})
+			}
+		case map[string]any:
+			key := firstNonEmpty(stringValue(v["key"]), stringValue(v["name"]), stringValue(v["id"]))
+			if key == "" {
+				continue
+			}
+			edge := associationEdge{Key: key}
+			if recursive, ok := v["recursive"].(bool); ok {
+				edge.Recursive = &recursive
+			}
+			out = append(out, edge)
+		}
+	}
+	return out
 }
 
 // stringSlice coerces a JSON array of strings into a []string, dropping blanks.
@@ -620,13 +660,13 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 			return err
 		}
 	}
-	for _, key := range mutation.Add {
-		other, err := m.resolveSkillKey(ctx, key)
+	for _, edge := range mutation.Add {
+		other, err := m.resolveSkillKey(ctx, edge.Key)
 		if err != nil {
 			return err
 		}
 		if other == nil {
-			return fmt.Errorf("skill %q not found", key)
+			return fmt.Errorf("skill %q not found", edge.Key)
 		}
 		if other.Id == subjectID {
 			continue
@@ -639,6 +679,16 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 			return err
 		}
 		if existing != nil {
+			if edge.Recursive == nil {
+				continue
+			}
+			// the edge exists but the caller restated its recursion, so patch it.
+			if _, err := tx.SkillDependency.UpdateMany(
+				eq[orm.SkillDependency, string](selfColumn, subjectID),
+				eq[orm.SkillDependency, string](otherColumn, other.Id),
+			).SetRecursive(*edge.Recursive).Exec(ctx); err != nil {
+				return err
+			}
 			continue
 		}
 		builder := tx.SkillDependency.Create()
@@ -646,6 +696,9 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 			builder.SetDependentId(subjectID).SetDependencyId(other.Id)
 		} else {
 			builder.SetDependentId(other.Id).SetDependencyId(subjectID)
+		}
+		if edge.Recursive != nil {
+			builder.SetRecursive(*edge.Recursive)
 		}
 		if _, err := builder.Exec(ctx); err != nil {
 			return err

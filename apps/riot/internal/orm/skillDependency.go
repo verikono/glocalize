@@ -13,6 +13,7 @@ import (
 type SkillDependency struct {
 	DependencyId string `db:"dependencyId" json:"dependencyId"`
 	DependentId  string `db:"dependentId" json:"dependentId"`
+	Recursive    bool   `db:"recursive" json:"recursive"`
 	Dependency   *Skill `json:"dependency,omitempty"`
 	Dependent    *Skill `json:"dependent,omitempty"`
 }
@@ -23,9 +24,11 @@ type SkillDependency struct {
 //
 //	dependencyId string required
 //	dependentId  string required
+//	recursive    bool   default: true
 type SkillDependencyCreate struct {
 	DependencyId string `json:"dependencyId"`
 	DependentId  string `json:"dependentId"`
+	Recursive    *bool  `json:"recursive"`
 }
 
 // colMask returns a bit mask of columns that are set
@@ -33,6 +36,9 @@ func (s *SkillDependencyCreate) colMask() uint64 {
 	var mask uint64
 	mask |= 1 << 0
 	mask |= 1 << 1
+	if s.Recursive != nil {
+		mask |= 1 << 2
+	}
 	return mask
 }
 
@@ -40,6 +46,7 @@ func (s *SkillDependencyCreate) colMask() uint64 {
 type SkillDependencyUpdate struct {
 	DependencyId *string `json:"dependencyId"`
 	DependentId  *string `json:"dependentId"`
+	Recursive    *bool   `json:"recursive"`
 }
 
 func (u *SkillDependencyUpdate) ToColsVals() ([]string, []any) {
@@ -52,6 +59,10 @@ func (u *SkillDependencyUpdate) ToColsVals() ([]string, []any) {
 	if u.DependentId != nil {
 		cols = append(cols, "dependentId")
 		vals = append(vals, u.DependentId)
+	}
+	if u.Recursive != nil {
+		cols = append(cols, "recursive")
+		vals = append(vals, u.Recursive)
 	}
 	return cols, vals
 }
@@ -80,6 +91,14 @@ func assignmentsToSkillDependencyUpdate(assignments []FieldAssignment) (SkillDep
 			} else {
 				errs.Add("dependentId", a.Val, "type", "field dependentId must be of type string")
 			}
+		case "recursive":
+			if v, ok := a.Val.(bool); ok {
+				input.Recursive = &v
+			} else if v, ok := a.Val.(*bool); ok {
+				input.Recursive = v
+			} else {
+				errs.Add("recursive", a.Val, "type", "field recursive must be of type bool")
+			}
 		}
 	}
 
@@ -96,12 +115,14 @@ func assignmentsToSkillDependencyUpdate(assignments []FieldAssignment) (SkillDep
 //	-- Scalars --
 //	dependencyId (bool)
 //	dependentId  (bool)
+//	recursive    (bool)
 //	-- Relations --
 //	dependency   (Skill)
 //	dependent    (Skill)
 type SkillDependencySelect struct {
 	DependencyId bool         `json:"dependencyId"`
 	DependentId  bool         `json:"dependentId"`
+	Recursive    bool         `json:"recursive"`
 	Dependency   *SkillSelect `json:"dependency,omitempty"`
 	Dependent    *SkillSelect `json:"dependent,omitempty"`
 }
@@ -109,6 +130,7 @@ type SkillDependencySelect struct {
 var fullSkillDependencySelectVal = &SkillDependencySelect{
 	DependencyId: true,
 	DependentId:  true,
+	Recursive:    true,
 }
 
 func fullSkillDependencySelect() *SkillDependencySelect {
@@ -119,7 +141,7 @@ func (s *SkillDependencySelect) hasAnyScalar() bool {
 	if s == nil {
 		return false
 	}
-	return s.DependencyId || s.DependentId
+	return s.DependencyId || s.DependentId || s.Recursive
 }
 
 func (s *SkillDependencySelect) hasAnySelected() bool {
@@ -132,6 +154,7 @@ func (s *SkillDependencySelect) hasAnySelected() bool {
 type SkillDependencyOmit struct {
 	DependencyId bool `json:"dependencyId"`
 	DependentId  bool `json:"dependentId"`
+	Recursive    bool `json:"recursive"`
 }
 
 type SkillDependencySelectQuery interface {
@@ -206,6 +229,7 @@ func (b *SkillDependencyQueryBuilder) GetRelationParams() (*SkillDependencySelec
 //
 //	dependencyId string required
 //	dependentId  string required
+//	recursive    bool   default: true
 //
 // Relations for SkillDependency:
 //
@@ -228,6 +252,7 @@ type SkillDependencyCreateArgs struct {
 //
 //	dependencyId string required
 //	dependentId  string required
+//	recursive    bool   default: true
 type SkillDependencyCreateManyArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*SkillDependencyCreate
@@ -254,6 +279,7 @@ func (a *SkillDependencyCreateManyArgs) AppendData(builders ...*SkillDependencyC
 //
 //	dependencyId string required
 //	dependentId  string required
+//	recursive    bool   default: true
 //
 // Relations for SkillDependency:
 //
@@ -519,6 +545,8 @@ func (m *SkillDependency) ScanFields(cols []string) []any {
 			targets[i] = &m.DependencyId
 		case "dependentId":
 			targets[i] = &m.DependentId
+		case "recursive":
+			targets[i] = &m.Recursive
 		}
 	}
 	return targets
@@ -527,6 +555,7 @@ func (m *SkillDependency) ScanFields(cols []string) []any {
 var skillDependencyDefaultCols = []string{
 	"dependencyId",
 	"dependentId",
+	"recursive",
 }
 
 var skillDependencyPKCols = []string{
@@ -541,11 +570,12 @@ func selectSkillDependencyCols(selects *SkillDependencySelect, omits *SkillDepen
 		return skillDependencyDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.DependencyId || selects.DependentId || selects.Dependency != nil || selects.Dependent != nil)
+	anySelected := selects != nil && (selects.DependencyId || selects.DependentId || selects.Recursive || selects.Dependency != nil || selects.Dependent != nil)
 
 	specs := []colSpec{
 		{"dependencyId", selects != nil && selects.DependencyId, omits != nil && omits.DependencyId, selects != nil && selects.Dependency != nil},
 		{"dependentId", selects != nil && selects.DependentId, omits != nil && omits.DependentId, selects != nil && selects.Dependent != nil},
+		{"recursive", selects != nil && selects.Recursive, omits != nil && omits.Recursive, false},
 	}
 
 	cols := computeCols(specs, selects != nil, anySelected)
@@ -614,6 +644,10 @@ func (b *SkillDependencyCreateBuilder) SetDependentId(v string) *SkillDependency
 	b.assignments = append(b.assignments, FieldAssignment{Col: "dependentId", Val: v})
 	return b
 }
+func (b *SkillDependencyCreateBuilder) SetRecursive(v bool) *SkillDependencyCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "recursive", Val: v})
+	return b
+}
 
 func (b *SkillDependencyCreateBuilder) Assignments(assignments ...FieldAssignmentOf[SkillDependency]) *SkillDependencyCreateBuilder {
 	for _, a := range assignments {
@@ -633,6 +667,7 @@ func (d *SkillDependencyDelegate) Create() *SkillDependencyCreateBuilder {
 const (
 	providedSkillDependencyDependencyId uint64 = 1 << 0
 	providedSkillDependencyDependentId  uint64 = 1 << 1
+	providedSkillDependencyRecursive    uint64 = 1 << 2
 )
 
 func assignmentsToSkillDependencyCreate(assignments []FieldAssignment) (SkillDependencyCreate, error) {
@@ -658,6 +693,13 @@ func assignmentsToSkillDependencyCreate(assignments []FieldAssignment) (SkillDep
 			} else {
 				errs.Add("dependentId", a.Val, "type", "field dependentId must be of type string")
 			}
+		case "recursive":
+			provided |= providedSkillDependencyRecursive
+			if v, ok := a.Val.(bool); ok {
+				input.Recursive = &v
+			} else {
+				errs.Add("recursive", a.Val, "type", "field recursive must be of type bool")
+			}
 		}
 	}
 	if provided&providedSkillDependencyDependencyId == 0 {
@@ -674,12 +716,16 @@ func assignmentsToSkillDependencyCreate(assignments []FieldAssignment) (SkillDep
 }
 
 func (s *SkillDependencyCreate) ToColsVals() (cols []string, vals []any) {
-	cols = make([]string, 0, 2)
-	vals = make([]any, 0, 2)
+	cols = make([]string, 0, 3)
+	vals = make([]any, 0, 3)
 	cols = append(cols, "dependencyId")
 	vals = append(vals, s.DependencyId)
 	cols = append(cols, "dependentId")
 	vals = append(vals, s.DependentId)
+	if s.Recursive != nil {
+		cols = append(cols, "recursive")
+		vals = append(vals, *s.Recursive)
+	}
 	return
 }
 
@@ -1065,7 +1111,7 @@ func (d *SkillDependencyDelegate) buildBulkInsertSQL(q *Queries, batch []*SkillD
 		colMask |= input.colMask()
 	}
 
-	cols = make([]string, 0, 2)
+	cols = make([]string, 0, 3)
 	for i, c := range skillDependencyDefaultCols {
 		if colMask&(1<<i) != 0 {
 			cols = append(cols, c)
@@ -1102,6 +1148,12 @@ func (d *SkillDependencyDelegate) buildBulkInsertSQL(q *Queries, batch []*SkillD
 				vals = append(vals, input.DependencyId)
 			case "dependentId":
 				vals = append(vals, input.DependentId)
+			case "recursive":
+				if input.Recursive != nil {
+					vals = append(vals, *input.Recursive)
+				} else {
+					writeDefault = true
+				}
 			}
 			if writeDefault {
 				sb.WriteString("DEFAULT")
@@ -1353,12 +1405,14 @@ func SkillDependencyConflictUpdate(fn func(u *SkillDependencyUpsert)) *ConflictA
 type SkillDependencyUpsert struct {
 	DependencyId fieldUpsert[string]
 	DependentId  fieldUpsert[string]
+	Recursive    fieldUpsert[bool]
 }
 
 func newSkillDependencyUpsert(up *ConflictUpdate) *SkillDependencyUpsert {
 	return &SkillDependencyUpsert{
 		DependencyId: fieldUpsert[string]{column: "dependencyId", update: up},
 		DependentId:  fieldUpsert[string]{column: "dependentId", update: up},
+		Recursive:    fieldUpsert[bool]{column: "recursive", update: up},
 	}
 }
 
@@ -1400,6 +1454,20 @@ func (b *SkillDependencyUpdateManyBuilder) SetDependentId(v string) *SkillDepend
 
 func (b *SkillDependencyUpdateManyAndReturnBuilder) SetDependentId(v string) *SkillDependencyUpdateManyAndReturnBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "dependentId", Val: v})
+	return b
+}
+func (b *SkillDependencyUpdateBuilder) SetRecursive(v bool) *SkillDependencyUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "recursive", Val: v})
+	return b
+}
+
+func (b *SkillDependencyUpdateManyBuilder) SetRecursive(v bool) *SkillDependencyUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "recursive", Val: v})
+	return b
+}
+
+func (b *SkillDependencyUpdateManyAndReturnBuilder) SetRecursive(v bool) *SkillDependencyUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "recursive", Val: v})
 	return b
 }
 

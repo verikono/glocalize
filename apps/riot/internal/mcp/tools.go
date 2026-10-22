@@ -136,9 +136,22 @@ func associationMutationSchema() map[string]any {
 		"description": "Add, remove or replace one side of a skill's associations. Each key is a skill id or name.",
 		"properties": map[string]any{
 			"add": map[string]any{
-				"type":        "array",
-				"description": "Association keys to add. Each key is a skill id or name.",
-				"items":       map[string]any{"type": "string"},
+				"type": "array",
+				"description": "Association keys to add. Each item is either a skill id or name, or an object {\"key\": <id or name>, \"recursive\": <bool>}. " +
+					"`recursive` defaults to true: the dependency is loaded together with all of its own dependencies. When false the dependency is loaded and the walk stops there.",
+				"items": map[string]any{
+					"anyOf": []any{
+						map[string]any{"type": "string"},
+						map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"key":       map[string]any{"type": "string", "description": "The associated skill's id or name."},
+								"recursive": map[string]any{"type": "boolean", "description": "Load the dependency's own dependencies too. Defaults to true."},
+							},
+							"required": []string{"key"},
+						},
+					},
+				},
 			},
 			"remove": map[string]any{
 				"type":        "array",
@@ -155,7 +168,7 @@ func associationMutationSchema() map[string]any {
 
 var mutateSkill = mcp.NewTool(
 	MutateSkillToolName,
-	mcp.WithDescription("Create, update or delete a skill and its relationships (dependencies, dependents) in one call. The target skill is identified by `id` or `name` — one of them is mandatory so the subject can be pulled back (for `op: \"create\"` the name is the new skill's name). `mutation.op` selects the operation: `create` makes a new skill from `mutation.data`, `update` patches the fields present in `mutation.data`, `delete` removes the skill and every association pointing at it. `mutation.dependencies` are the skills this skill relies on; `mutation.dependents` are the skills that rely on this one. Each side accepts `add` and `remove` arrays of skill ids or names, plus `replace: true` to treat `add` as the complete set (everything else is voided). The whole mutation runs in one transaction."),
+	mcp.WithDescription("Create, update or delete a skill and its relationships (dependencies, dependents) in one call. The target skill is identified by `id` or `name` — one of them is mandatory so the subject can be pulled back (for `op: \"create\"` the name is the new skill's name). `mutation.op` selects the operation: `create` makes a new skill from `mutation.data`, `update` patches the fields present in `mutation.data`, `delete` removes the skill and every association pointing at it. `mutation.dependencies` are the skills this skill relies on; `mutation.dependents` are the skills that rely on this one. Each side accepts `add` and `remove` arrays of skill ids or names, plus `replace: true` to treat `add` as the complete set (everything else is voided). An `add` item may be an object `{\"key\": <id or name>, \"recursive\": <bool>}`: `recursive` defaults to true, meaning the dependency is loaded together with all of its own dependencies; when false the dependency is loaded and the walk stops there. The whole mutation runs in one transaction."),
 	mcp.WithString("id", mcp.Description("The target skill's id. Provide this or `name`.")),
 	mcp.WithString("name", mcp.Description("The target skill's name. Provide this or `id`.")),
 	mcp.WithObject("mutation", mcp.Required(),

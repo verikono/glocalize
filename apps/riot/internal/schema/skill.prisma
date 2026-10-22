@@ -81,6 +81,7 @@ seed Skill |
 model SkillDependency {
   dependencyId String
   dependentId  String
+  recursive    Boolean @default(true) /// true loads the dependency's own dependencies; false stops at it
 
   dependency Skill @relation("SkillDependencies", fields: [dependencyId], references: [id])
   dependent  Skill @relation("SkillDependents", fields: [dependentId], references: [id])
