@@ -315,10 +315,33 @@ const wireViewstack = () => {
     });
 }
 
+// syncNavLinks carries the current context across to the agents UI, so
+// switching sections keeps it and the return trip restores it.
+const syncNavLinks = () => {
+    const params = new URLSearchParams(window.location.search);
+    const next = new URLSearchParams();
+    ["subject", "class", "agent"].forEach((key) => {
+        const value = String(params.get(key) || "").trim();
+        if (value) next.set(key, value);
+    });
+
+    const query = next.toString();
+    const suffix = query ? "?" + query : "";
+
+    const agents = document.querySelector('.nav-link[href^="/agents/"]');
+    if (agents) agents.href = "/agents/" + suffix;
+
+    // the section's own link keeps its params too, so re-clicking it is a no-op.
+    const skills = document.querySelector('.nav-link[href^="/skills/"]');
+    if (skills) skills.href = "/skills/" + suffix;
+}
+
 // wireNavigation binds the section links and the debounced skill search. A
 // keystroke restarts a 1500ms timer, so the query only fires once typing has
 // paused; the graph then narrows to the matches and their dependencies.
 const wireNavigation = () => {
+    syncNavLinks();
+
     const input = document.querySelector("#nav-search");
     if (!input) return;
 
@@ -559,6 +582,7 @@ const selectSkill = async (name, options = {}) => {
         window.history.replaceState({ subject: name }, "", url.toString());
     }
 
+    syncNavLinks();
     markActiveSkill(document.querySelector("#main"), name);
 }
 

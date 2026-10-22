@@ -222,6 +222,29 @@
 		url.searchParams.set("agent", agent.id);
 		if (push) window.history.pushState({ agent: agent.id }, "", url.toString());
 		else window.history.replaceState({ agent: agent.id }, "", url.toString());
+
+		syncNavLinks();
+	};
+
+	// syncNavLinks carries the current context across to the skills UI, so
+	// switching sections keeps it and the return trip restores it.
+	var syncNavLinks = function () {
+		var params = new URLSearchParams(window.location.search);
+		var next = new URLSearchParams();
+		["agent", "subject", "class"].forEach(function (key) {
+			var value = String(params.get(key) || "").trim();
+			if (value) next.set(key, value);
+		});
+
+		var query = next.toString();
+		var suffix = query ? "?" + query : "";
+
+		var skills = document.querySelector('.nav-link[href^="/skills/"]');
+		if (skills) skills.href = "/skills/" + suffix;
+
+		// the section's own link keeps its params too, so re-clicking it is a no-op.
+		var agents = document.querySelector('.nav-link[href^="/agents/"]');
+		if (agents) agents.href = "/agents/" + suffix;
 	};
 
 	// buildAgentTree turns an agent into a hierarchy rooted at the agent itself:
@@ -1324,11 +1347,13 @@
 		var params = new URLSearchParams(window.location.search);
 		var wanted = String(params.get("agent") || "").trim();
 		if (wanted) selectAgent(wanted, { push: false });
+		else syncNavLinks();
 
 		window.addEventListener("popstate", function () {
 			var next = new URLSearchParams(window.location.search);
 			var id = String(next.get("agent") || "").trim();
 			if (id) selectAgent(id, { push: false });
+			else syncNavLinks();
 		});
 	};
 
