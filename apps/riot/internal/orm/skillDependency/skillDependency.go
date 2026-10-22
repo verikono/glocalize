@@ -40,37 +40,42 @@ var DependencyId = riot.StringField[riot.SkillDependency]{Column: "dependencyId"
 
 var DependentId = riot.StringField[riot.SkillDependency]{Column: "dependentId"}
 
+var Agent = riot.StringField[riot.SkillDependency]{Column: "agent"}
+
 var Recursive = riot.Field[riot.SkillDependency, bool]{Column: "recursive"}
 
-type dependencyId_DependentId struct {
+type dependencyId_DependentId_Agent struct {
 	riot.CompositeUniqueConstraint[riot.SkillDependency]
 	Column string
 }
 
-var DependencyId_DependentId = dependencyId_DependentId{
+var DependencyId_DependentId_Agent = dependencyId_DependentId_Agent{
 	CompositeUniqueConstraint: riot.CompositeUniqueConstraint[riot.SkillDependency]{
-		Name: "DependencyId_DependentId",
+		Name: "DependencyId_DependentId_Agent",
 		Columns: []string{
 			"dependencyId",
 			"dependentId",
+			"agent",
 		},
 	},
-	Column: "DependencyId_DependentId",
+	Column: "DependencyId_DependentId_Agent",
 }
 
-func (f dependencyId_DependentId) EQ(dependencyId string, dependentId string) riot.UniquePredicate[riot.SkillDependency] {
+func (f dependencyId_DependentId_Agent) EQ(dependencyId string, dependentId string, agent string) riot.UniquePredicate[riot.SkillDependency] {
 	return riot.UniquePredicate[riot.SkillDependency]{
 		Data: riot.PredicateData{
-			Column:   "DependencyId_DependentId",
+			Column:   "DependencyId_DependentId_Agent",
 			Operator: "AND",
 			Value: map[string]any{
 				"dependencyId": dependencyId,
 				"dependentId":  dependentId,
+				"agent":        agent,
 			},
 			IsLogical: true,
 			Children: []riot.PredicateData{
 				{Column: "dependencyId", Operator: "=", Value: dependencyId},
 				{Column: "dependentId", Operator: "=", Value: dependentId},
+				{Column: "agent", Operator: "=", Value: agent},
 			},
 		},
 	}

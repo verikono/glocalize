@@ -1019,6 +1019,7 @@ type Queries struct {
 	//
 	//   dependencyId string required
 	//   dependentId  string required
+	//   agent        string default: ""
 	//   recursive    bool   default: true
 	SkillDependency *SkillDependencyDelegate
 	// StyleToken provides CRUD operations for StyleToken.

@@ -168,14 +168,19 @@ func associationMutationSchema() map[string]any {
 
 var mutateSkill = mcp.NewTool(
 	MutateSkillToolName,
-	mcp.WithDescription("Create, update or delete a skill and its relationships (dependencies, dependents) in one call. The target skill is identified by `id` or `name` — one of them is mandatory so the subject can be pulled back (for `op: \"create\"` the name is the new skill's name). `mutation.op` selects the operation: `create` makes a new skill from `mutation.data`, `update` patches the fields present in `mutation.data`, `delete` removes the skill and every association pointing at it. `mutation.dependencies` are the skills this skill relies on; `mutation.dependents` are the skills that rely on this one. Each side accepts `add` and `remove` arrays of skill ids or names, plus `replace: true` to treat `add` as the complete set (everything else is voided). An `add` item may be an object `{\"key\": <id or name>, \"recursive\": <bool>}`: `recursive` defaults to true, meaning the dependency is loaded together with all of its own dependencies; when false the dependency is loaded and the walk stops there. The whole mutation runs in one transaction."),
+	mcp.WithDescription("Create, update or delete a skill and its relationships (dependencies, dependents) in one call. The target skill is identified by `id` or `name` — one of them is mandatory so the subject can be pulled back (for `op: \"create\"` the name is the new skill's name). `mutation.op` selects the operation: `create` makes a new skill from `mutation.data`, `update` patches the fields present in `mutation.data`, `delete` removes the skill and every association pointing at it. `mutation.dependencies` are the skills this skill relies on; `mutation.dependents` are the skills that rely on this one. Each side accepts `add` and `remove` arrays of skill ids or names, plus `replace: true` to treat `add` as the complete set (everything else is voided). An `add` item may be an object `{\"key\": <id or name>, \"recursive\": <bool>}`: `recursive` defaults to true, meaning the dependency is loaded together with all of its own dependencies; when false the dependency is loaded and the walk stops there. `agent` scopes the edges: omit it for the global edges every agent inherits, or name an agent to write that agent's own edges, which shadow the global edge for the same skill pair. The whole mutation runs in one transaction."),
 	mcp.WithString("id", mcp.Description("The target skill's id. Provide this or `name`.")),
 	mcp.WithString("name", mcp.Description("The target skill's name. Provide this or `id`.")),
+	mcp.WithString("agent", mcp.Description("Optional. Scopes the dependency edges to one agent: the edges written are that agent's own. Omit for the global edges every agent inherits.")),
 	mcp.WithObject("mutation", mcp.Required(),
 		mcp.Description("The mutation to apply to the target skill."),
 		mcp.Properties(map[string]any{
 			"id":   map[string]any{"type": "string", "description": "The target skill's id (alternative to the top-level id)."},
 			"name": map[string]any{"type": "string", "description": "The target skill's name (alternative to the top-level name)."},
+			"agent": map[string]any{
+				"type":        "string",
+				"description": "Optional. Scopes the dependency edges to one agent (alternative to the top-level agent).",
+			},
 			"op": map[string]any{
 				"type":        "string",
 				"enum":        []string{"create", "update", "delete"},

@@ -137,6 +137,16 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 		return nil, err
 	}
 
+	// the agent's own edges are keyed by its name; "" is the global edge.
+	agent, err := m.db.Agent.FindFirst(eq[orm.Agent, string]("id", agentID)).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	agentName := ""
+	if agent != nil {
+		agentName = agent.Name
+	}
+
 	byName := make(map[string]*boundSkill, len(direct))
 	order := make([]string, 0, len(direct))
 	for i := range direct {
@@ -171,11 +181,32 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 		if parentSkill == nil {
 			continue
 		}
-		deps, err := m.db.SkillDependency.FindMany(eq[orm.SkillDependency, string]("dependentId", parentSkill.Id)).Exec(ctx)
+		// an agent sees the global edges ("") plus its own; its own edge wins
+		// when both exist for the same pair.
+		deps, err := m.db.SkillDependency.FindMany(
+			eq[orm.SkillDependency, string]("dependentId", parentSkill.Id),
+			orm.Or(
+				eq[orm.SkillDependency, string]("agent", ""),
+				eq[orm.SkillDependency, string]("agent", agentName),
+			),
+		).Exec(ctx)
 		if err != nil {
 			return nil, err
 		}
+		// the agent's own edge shadows the global one for the same pair, so
+		// collect the agent's pairs first and drop the matching global rows.
+		ownPairs := make(map[string]struct{}, len(deps))
 		for _, dep := range deps {
+			if dep.Agent != "" {
+				ownPairs[dep.DependencyId] = struct{}{}
+			}
+		}
+		for _, dep := range deps {
+			if dep.Agent == "" {
+				if _, shadowed := ownPairs[dep.DependencyId]; shadowed {
+					continue
+				}
+			}
 			depSkill, err := m.skillByID(ctx, dep.DependencyId)
 			if err != nil {
 				return nil, err
@@ -638,10 +669,14 @@ func (m *RiotMcp) resolveSkillKey(ctx context.Context, key string) (*orm.Skill, 
 
 // applyAssociations reconciles one side of a skill's associations inside a
 // transaction. selfColumn is the column holding the subject skill's id and
-// otherColumn the column holding the associated skill's id.
-func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, selfColumn, otherColumn string, mutation associationMutation) error {
+// otherColumn the column holding the associated skill's id. agent scopes the
+// edges: "" is the global edge, a name is that agent's own edge.
+func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, selfColumn, otherColumn, agent string, mutation associationMutation) error {
 	if mutation.Replace {
-		if _, err := tx.SkillDependency.DeleteMany(eq[orm.SkillDependency, string](selfColumn, subjectID)).Exec(ctx); err != nil {
+		if _, err := tx.SkillDependency.DeleteMany(
+			eq[orm.SkillDependency, string](selfColumn, subjectID),
+			eq[orm.SkillDependency, string]("agent", agent),
+		).Exec(ctx); err != nil {
 			return err
 		}
 	}
@@ -656,6 +691,7 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 		if _, err := tx.SkillDependency.DeleteMany(
 			eq[orm.SkillDependency, string](selfColumn, subjectID),
 			eq[orm.SkillDependency, string](otherColumn, other.Id),
+			eq[orm.SkillDependency, string]("agent", agent),
 		).Exec(ctx); err != nil {
 			return err
 		}
@@ -674,6 +710,7 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 		existing, err := tx.SkillDependency.FindFirst(
 			eq[orm.SkillDependency, string](selfColumn, subjectID),
 			eq[orm.SkillDependency, string](otherColumn, other.Id),
+			eq[orm.SkillDependency, string]("agent", agent),
 		).Exec(ctx)
 		if err != nil {
 			return err
@@ -686,6 +723,7 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 			if _, err := tx.SkillDependency.UpdateMany(
 				eq[orm.SkillDependency, string](selfColumn, subjectID),
 				eq[orm.SkillDependency, string](otherColumn, other.Id),
+				eq[orm.SkillDependency, string]("agent", agent),
 			).SetRecursive(*edge.Recursive).Exec(ctx); err != nil {
 				return err
 			}
@@ -697,6 +735,7 @@ func (m *RiotMcp) applyAssociations(ctx context.Context, tx *orm.Tx, subjectID, 
 		} else {
 			builder.SetDependentId(other.Id).SetDependencyId(subjectID)
 		}
+		builder.SetAgent(agent)
 		if edge.Recursive != nil {
 			builder.SetRecursive(*edge.Recursive)
 		}
@@ -729,6 +768,9 @@ func (m *RiotMcp) onMutateSkill(ctx context.Context, request mcp.CallToolRequest
 	}
 
 	data, _ := mutation["data"].(map[string]any)
+	// agent scopes the edges: "" is the global edge every agent inherits, a
+	// name is that agent's own edge.
+	agent := strings.TrimSpace(firstNonEmpty(stringArg(args, "agent"), stringValue(mutation["agent"])))
 	dependencies, err := parseAssociationMutation(mutation["dependencies"])
 	if err != nil {
 		return errorResult(fmt.Errorf("mutate-skill: dependencies: %w", err)), nil
@@ -820,11 +862,11 @@ func (m *RiotMcp) onMutateSkill(ctx context.Context, request mcp.CallToolRequest
 		}
 
 		// dependencies: rows where this skill is the dependent.
-		if err := m.applyAssociations(ctx, tx, subject.Id, "dependentId", "dependencyId", dependencies); err != nil {
+		if err := m.applyAssociations(ctx, tx, subject.Id, "dependentId", "dependencyId", agent, dependencies); err != nil {
 			return err
 		}
 		// dependents: rows where this skill is the dependency.
-		if err := m.applyAssociations(ctx, tx, subject.Id, "dependencyId", "dependentId", dependents); err != nil {
+		if err := m.applyAssociations(ctx, tx, subject.Id, "dependencyId", "dependentId", agent, dependents); err != nil {
 			return err
 		}
 

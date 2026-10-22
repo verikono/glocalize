@@ -81,10 +81,11 @@ seed Skill |
 model SkillDependency {
   dependencyId String
   dependentId  String
+  agent        String  @default("") /// "" means the edge applies to every agent
   recursive    Boolean @default(true) /// true loads the dependency's own dependencies; false stops at it
 
   dependency Skill @relation("SkillDependencies", fields: [dependencyId], references: [id])
   dependent  Skill @relation("SkillDependents", fields: [dependentId], references: [id])
 
-  @@id([dependencyId, dependentId])
+  @@id([dependencyId, dependentId, agent])
 }
