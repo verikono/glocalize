@@ -39,14 +39,15 @@
 	var view = { k: 1, x: 0, y: 0 };
 
 	// edgeState is the line menu: whether it is open, which agent-skill line it
-	// belongs to, where it was clicked in screen space, and whether its
-	// "use sub-tree" box is ticked.
+	// belongs to, the point on that line it is anchored to in tree space, and
+	// whether its "use sub-tree" box is ticked. Tree space keeps the menu on the
+	// same spot of the line as the tree is zoomed and panned.
 	var edgeState = {
 		open: false,
 		sourceId: "",
 		targetId: "",
-		x: 0,
-		y: 0,
+		ux: 0,
+		uy: 0,
 		useSubtree: false,
 	};
 
@@ -184,8 +185,8 @@
 		edgeState.open = false;
 		edgeState.sourceId = "";
 		edgeState.targetId = "";
-		edgeState.x = 0;
-		edgeState.y = 0;
+		edgeState.ux = 0;
+		edgeState.uy = 0;
 		edgeState.useSubtree = false;
 
 		var heading = document.querySelector("#agent-name");
@@ -421,17 +422,55 @@
 			.attr("pointer-events", "stroke")
 			.attr("d", linkPath);
 
-		// a left click on a line opens its menu at the pointer.
+		// hoveredPath is the ancestry of the node under the pointer, or null when
+		// no node is hovered. It is kept so the line menu's own line can stay
+		// bold while the pointer is elsewhere.
+		var hoveredPath = null;
+
+		// isActiveEdge reports whether a link is the one the line menu belongs to.
+		var isActiveEdge = function (l) {
+			return edgeState.open &&
+				l.source.data.id === edgeState.sourceId &&
+				l.target.data.id === edgeState.targetId;
+		};
+
+		// paintEdges draws the hover highlight and keeps the active line bold, so
+		// the relationship the menu belongs to never fades while the menu is open.
+		var paintEdges = function () {
+			edge.attr("stroke-opacity", function (l) {
+				if (isActiveEdge(l)) return 1;
+				if (!hoveredPath) return 0.35;
+				return hoveredPath.has(l.target) ? 0.95 : 0.12;
+			}).attr("stroke-width", function (l) {
+				if (isActiveEdge(l)) return 3;
+				if (!hoveredPath) return 1.5;
+				return hoveredPath.has(l.target) ? 2.5 : 1.5;
+			});
+		};
+
+		// a left click on a line opens its menu at the pointer. The pointer is
+		// recorded in tree space, so the menu stays on the same spot of the line
+		// however the tree is later zoomed or panned.
 		link.style("cursor", "pointer").on("click", function (event, d) {
 			event.stopPropagation();
 			var rect = svg.node().getBoundingClientRect();
 			edgeState.open = true;
 			edgeState.sourceId = d.source.data.id;
 			edgeState.targetId = d.target.data.id;
-			edgeState.x = event.clientX - rect.left;
-			edgeState.y = event.clientY - rect.top;
+			edgeState.ux = (event.clientX - rect.left - view.x) / view.k;
+			edgeState.uy = (event.clientY - rect.top - view.y) / view.k;
 			edgeState.useSubtree = false;
+			paintEdges();
 			renderOverlay();
+		});
+
+		// a right click on the active line deactivates the relationship: the menu
+		// closes and the line returns to its resting weight.
+		link.on("contextmenu", function (event, d) {
+			event.preventDefault();
+			event.stopPropagation();
+			if (!isActiveEdge(d)) return;
+			closeEdgeCallout();
 		});
 
 		node.append("title")
@@ -442,17 +481,14 @@
 		// hovering a node highlights the path back to the agent; clicking a skill
 		// opens it on the skills page.
 		node.on("mouseenter", function (event, d) {
-			var path = new Set(d.ancestors());
-			edge.attr("stroke-opacity", function (l) {
-				return path.has(l.target) ? 0.95 : 0.12;
-			}).attr("stroke-width", function (l) {
-				return path.has(l.target) ? 2.5 : 1.5;
-			});
+			hoveredPath = new Set(d.ancestors());
+			paintEdges();
 			node.classed("active", function (n) {
-				return path.has(n);
+				return hoveredPath.has(n);
 			});
 		}).on("mouseleave", function () {
-			edge.attr("stroke-opacity", 0.35).attr("stroke-width", 1.5);
+			hoveredPath = null;
+			paintEdges();
 			node.classed("active", false);
 		});
 
@@ -698,14 +734,28 @@
 			});
 		};
 
+		// closeEdgeCallout deactivates the relationship: the menu closes and the
+		// line it belonged to returns to its resting weight.
+		var closeEdgeCallout = function () {
+			if (!edgeState.open) return;
+			edgeState.open = false;
+			edgeState.sourceId = "";
+			edgeState.targetId = "";
+			edgeState.useSubtree = false;
+			paintEdges();
+			renderOverlay();
+		};
+
 		// renderEdgeCallout draws the menu for the clicked agent-skill line: one
 		// "use sub-tree" row with a checkbox, hung just below and right of the
-		// click so it never covers the line it belongs to.
+		// anchor point so it never covers the line it belongs to. The anchor is in
+		// tree space, so the menu follows the line as the tree is zoomed and panned
+		// while the menu itself keeps its pixel size.
 		var renderEdgeCallout = function () {
 			if (!edgeState.open) return;
 
-			var x = edgeState.x + EDGE_POP_GAP;
-			var y = edgeState.y + EDGE_POP_GAP;
+			var x = view.x + view.k * edgeState.ux + EDGE_POP_GAP;
+			var y = view.y + view.k * edgeState.uy + EDGE_POP_GAP;
 
 			var callout = overlay.append("g").attr("class", "edge-callout");
 
@@ -757,6 +807,13 @@
 				event.stopPropagation();
 				edgeState.useSubtree = !edgeState.useSubtree;
 				renderOverlay();
+			});
+
+			// a right click on the callout deactivates the relationship too.
+			callout.on("contextmenu", function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+				closeEdgeCallout();
 			});
 		};
 
@@ -831,9 +888,7 @@
 
 			// a click on empty space dismisses the line menu.
 			svgNode.addEventListener("click", function () {
-				if (!edgeState.open) return;
-				edgeState.open = false;
-				renderOverlay();
+				closeEdgeCallout();
 			});
 		};
 
