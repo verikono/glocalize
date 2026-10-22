@@ -20,11 +20,34 @@
 
 	var PRIORITIES = ["LOW", "NORMAL", "HIGH", "ESSENTIAL"];
 
+	// the line menu: its width and height, the gap from the line's elbow, and
+	// the side of the checkbox inside it.
+	var EDGE_POP_W = 150;
+	var EDGE_POP_H = 26;
+	var EDGE_POP_GAP = 10;
+	var EDGE_BOX = 11;
+
 	var state = {
 		agents: [],
 		skills: [],
 		filter: "",
 		selected: "",
+	};
+
+	// view is the zoom and pan: a user-space point maps to screen as
+	// k * point + (x, y). It outlives a redraw so the tree keeps its place.
+	var view = { k: 1, x: 0, y: 0 };
+
+	// edgeState is the line menu: whether it is open, which agent-skill line it
+	// belongs to, where it was clicked in screen space, and whether its
+	// "use sub-tree" box is ticked.
+	var edgeState = {
+		open: false,
+		sourceId: "",
+		targetId: "",
+		x: 0,
+		y: 0,
+		useSubtree: false,
 	};
 
 	// addState is the add-skill interface: whether it is open, which skills are
@@ -145,6 +168,16 @@
 
 		state.selected = agent.id;
 
+		// a different agent is a different tree, so the view and the line menu
+		// start fresh.
+		view = { k: 1, x: 0, y: 0 };
+		edgeState.open = false;
+		edgeState.sourceId = "";
+		edgeState.targetId = "";
+		edgeState.x = 0;
+		edgeState.y = 0;
+		edgeState.useSubtree = false;
+
 		var heading = document.querySelector("#agent-name");
 		if (heading) heading.textContent = agent.name;
 
@@ -264,10 +297,7 @@
 		// paths are bound once the columns are known.
 		var linkGroup = viewport.append("g")
 			.attr("class", "links")
-			.attr("fill", "none")
-			.attr("stroke", "currentColor")
-			.attr("stroke-opacity", 0.35)
-			.attr("stroke-width", 1.5);
+			.attr("fill", "none");
 
 		var node = viewport.append("g")
 			.attr("class", "nodes")
@@ -353,13 +383,46 @@
 		});
 
 		// links: a step-before path, horizontal to the child's column then
-		// vertical down to its row.
-		var link = linkGroup.selectAll("path")
+		// vertical down to its row. It starts at the parent label's right edge,
+		// not the node, so the run is never hidden under the label's halo. Each
+		// line is a group holding the drawn edge and a wider transparent path
+		// that makes the thin line easy to hit.
+		var linkPath = function (d) {
+			var startX = posX(d.source) + 8 + d.source.labelWidth;
+			return "M" + startX + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
+		};
+
+		var link = linkGroup.selectAll("g.link")
 			.data(root.links())
-			.join("path")
-			.attr("d", function (d) {
-				return "M" + posX(d.source) + "," + posY(d.source) + "H" + posX(d.target) + "V" + posY(d.target);
-			});
+			.join("g")
+			.attr("class", "link");
+
+		var edge = link.append("path")
+			.attr("class", "edge")
+			.attr("stroke", "currentColor")
+			.attr("stroke-opacity", 0.35)
+			.attr("stroke-width", 1.5)
+			.attr("d", linkPath);
+
+		link.append("path")
+			.attr("class", "hit")
+			.attr("stroke", "transparent")
+			.attr("stroke-width", 12)
+			.attr("pointer-events", "stroke")
+			.attr("d", linkPath);
+
+		// a left click on a line opens its menu at the pointer.
+		link.style("cursor", "pointer").on("click", function (event, d) {
+			event.stopPropagation();
+			var rect = svg.node().getBoundingClientRect();
+			edgeState.open = true;
+			edgeState.sourceId = d.source.data.id;
+			edgeState.targetId = d.target.data.id;
+			edgeState.x = event.clientX - rect.left;
+			edgeState.y = event.clientY - rect.top;
+			edgeState.useSubtree = false;
+			renderOverlay();
+		});
 
 		node.append("title")
 			.text(function (d) {
@@ -370,7 +433,7 @@
 		// opens it on the skills page.
 		node.on("mouseenter", function (event, d) {
 			var path = new Set(d.ancestors());
-			link.attr("stroke-opacity", function (l) {
+			edge.attr("stroke-opacity", function (l) {
 				return path.has(l.target) ? 0.95 : 0.12;
 			}).attr("stroke-width", function (l) {
 				return path.has(l.target) ? 2.5 : 1.5;
@@ -379,7 +442,7 @@
 				return path.has(n);
 			});
 		}).on("mouseleave", function () {
-			link.attr("stroke-opacity", 0.35).attr("stroke-width", 1.5);
+			edge.attr("stroke-opacity", 0.35).attr("stroke-width", 1.5);
 			node.classed("active", false);
 		});
 
@@ -391,27 +454,28 @@
 			window.location.href = "/skills/?skill=" + encodeURIComponent(d.data.id);
 		});
 
-		// the overlay holds the add control. It is never scaled, so the button and
-		// its popouts keep their pixel size however far the tree is zoomed.
+		// the overlay holds the add control and the line menu. It is never scaled,
+		// so they keep their pixel size however far the tree is zoomed.
 		var overlay = svg.append("g").attr("class", "overlay");
 
-		// view is the zoom and pan: a user-space point maps to screen as
-		// k * point + (x, y).
-		var view = { k: 1, x: 0, y: 0 };
-
-		// applyView writes the transform and re-anchors the control, which is
-		// positioned in screen space from the agent's name.
+		// applyView writes the transform and re-anchors the overlay, which is
+		// positioned in screen space from the tree.
 		var applyView = function () {
 			viewport.attr("transform", "translate(" + view.x + "," + view.y + ") scale(" + view.k + ")");
+			renderOverlay();
+		};
+
+		// renderOverlay redraws everything that sits above the tree.
+		var renderOverlay = function () {
+			overlay.selectAll("*").remove();
 			renderAddControl();
+			renderEdgeCallout();
 		};
 
 		// renderAddControl draws the round + button beside the agent's name and,
 		// when open, the skill list, the priority list and the confirm/cancel
 		// buttons. Every element's top edge is aligned to the button's top edge.
 		var renderAddControl = function () {
-			overlay.selectAll("*").remove();
-
 			// the agent's name in screen space, so the control tracks the tree as
 			// it is zoomed and panned.
 			var nameX = view.x + view.k * posX(root);
@@ -624,6 +688,68 @@
 			});
 		};
 
+		// renderEdgeCallout draws the menu for the clicked agent-skill line: one
+		// "use sub-tree" row with a checkbox, hung just below and right of the
+		// click so it never covers the line it belongs to.
+		var renderEdgeCallout = function () {
+			if (!edgeState.open) return;
+
+			var x = edgeState.x + EDGE_POP_GAP;
+			var y = edgeState.y + EDGE_POP_GAP;
+
+			var callout = overlay.append("g").attr("class", "edge-callout");
+
+			callout.append("rect")
+				.attr("x", x)
+				.attr("y", y)
+				.attr("width", EDGE_POP_W)
+				.attr("height", EDGE_POP_H)
+				.attr("rx", 4)
+				.attr("fill", "rgb(255, 255, 255)")
+				.attr("stroke", "rgb(37, 37, 37)")
+				.attr("stroke-width", 1);
+
+			var boxX = x + POP_PAD;
+			var boxY = y + (EDGE_POP_H - EDGE_BOX) / 2;
+
+			callout.append("rect")
+				.attr("x", boxX)
+				.attr("y", boxY)
+				.attr("width", EDGE_BOX)
+				.attr("height", EDGE_BOX)
+				.attr("rx", 2)
+				.attr("fill", edgeState.useSubtree ? "rgb(37, 37, 37)" : "rgb(255, 255, 255)")
+				.attr("stroke", "rgb(37, 37, 37)")
+				.attr("stroke-width", 1);
+
+			if (edgeState.useSubtree) {
+				callout.append("path")
+					.attr("d", "M" + (boxX + EDGE_BOX * 0.22) + "," + (boxY + EDGE_BOX * 0.52) +
+						"L" + (boxX + EDGE_BOX * 0.42) + "," + (boxY + EDGE_BOX * 0.74) +
+						"L" + (boxX + EDGE_BOX * 0.8) + "," + (boxY + EDGE_BOX * 0.26))
+					.attr("fill", "none")
+					.attr("stroke", "rgb(255, 255, 255)")
+					.attr("stroke-width", 1.6)
+					.attr("stroke-linecap", "round")
+					.attr("stroke-linejoin", "round");
+			}
+
+			callout.append("text")
+				.attr("x", boxX + EDGE_BOX + POP_PAD)
+				.attr("y", y + EDGE_POP_H / 2)
+				.attr("dy", "0.35em")
+				.attr("font-family", "sans-serif")
+				.attr("font-size", 12)
+				.attr("fill", "rgb(37, 37, 37)")
+				.text("use sub-tree");
+
+			callout.style("cursor", "pointer").on("click", function (event) {
+				event.stopPropagation();
+				edgeState.useSubtree = !edgeState.useSubtree;
+				renderOverlay();
+			});
+		};
+
 		// wireZoomPan binds wheel zoom about the pointer and middle-drag pan. The
 		// overlay is re-anchored on every change, so the control stays beside the
 		// agent's name at a constant size.
@@ -691,6 +817,13 @@
 			});
 			svgNode.addEventListener("mousedown", function (event) {
 				if (event.button === 1) event.preventDefault();
+			});
+
+			// a click on empty space dismisses the line menu.
+			svgNode.addEventListener("click", function () {
+				if (!edgeState.open) return;
+				edgeState.open = false;
+				renderOverlay();
 			});
 		};
 

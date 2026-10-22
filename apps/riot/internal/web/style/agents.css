@@ -208,6 +208,12 @@ body {
     fill: rgb(200, 60, 60);
 }
 
+/* an agent-skill line thickens under the pointer, showing it can be clicked. */
+.agent-graph .link:hover .edge {
+    stroke-opacity: 1;
+    stroke-width: 3;
+}
+
 /* the caption is pinned to the stage's bottom left, clear of the tree's root
    node which occupies the top left. */
 .agent-graph .caption {
