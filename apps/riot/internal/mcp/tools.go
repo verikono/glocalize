@@ -55,15 +55,20 @@ const (
 	DropSkillReferenceToolName = "drop-skill-reference"
 	// LoadPackageContextToolName returns the package guidance for a path.
 	LoadPackageContextToolName = "load-package-context"
+	// GetProjectContextToolName returns the guidance for a named package.
+	GetProjectContextToolName = "get-project-context"
 )
 
 const priorityVocabulary = "LOW, NORMAL, HIGH, ESSENTIAL (least to most essential)"
+
+// appLanguageVocabulary names the App.language values an agent may pass.
+const appLanguageVocabulary = "typescript, go, python"
 
 // tool definitions
 
 var agentCheckin = mcp.NewTool(
 	AgentCheckinToolName,
-	mcp.WithDescription("Check in as an agent and receive a stable agent id, returned as an AGENTS.md document listing the skills bound to you by priority. Call this ONCE as the first action of every session, passing your own agent name and the project you are working in; the server returns the same id on every later check-in for the same project+agent. Read the document: it tells you which skills are ESSENTIAL (load them immediately), HIGH, NORMAL and LOW. Consume every skill it lists with the get-skill tool. Thereafter send the returned id in the `agentid` header of every MCP request."),
+	mcp.WithDescription("Check in as an agent and receive a stable agent id, returned as an AGENTS.md document listing the skills bound to you by priority. Call this ONCE as the first action of every session, passing your own agent name and the project you are working in; the server returns the same id on every later check-in for the same project+agent. Read the document: it tells you which skills are ESSENTIAL (load them immediately), HIGH, NORMAL and LOW, and within each priority it lists the skills closest to you in the dependency hierarchy first. That order is the conflict-resolution order: when two skills disagree, the one listed earlier wins (FIFO). Consume every skill it lists with the get-skill tool. Thereafter send the returned id in the `agentid` header of every MCP request."),
 	mcp.WithString("agent", mcp.Required(), mcp.Description("The calling agent's name, e.g. \"McpikonArchitect\".")),
 	mcp.WithString("project", mcp.Required(), mcp.Description("The project the agent is checking in for; must be one of the projects listed by get-projects.")),
 )
@@ -231,8 +236,9 @@ var associateAgentSkill = mcp.NewTool(
 
 var associateAppSkill = mcp.NewTool(
 	AssociateAppSkillToolName,
-	mcp.WithDescription("Associate a skill with an app, recording how essential that skill is to the app. The pair (app, skill) is the identity, so re-associating a skill updates its priority instead of erroring. The app and the skill must both already exist."),
-	mcp.WithString("app", mcp.Required(), mcp.Description("The app to bind the skill to, by name, e.g. \"mcpikon\".")),
+	mcp.WithDescription("Associate a skill with an app, recording how essential that skill is to the app. The pair (app, language) plus the skill is the identity, so re-associating a skill updates its priority instead of erroring. The app and the skill must both already exist."),
+	mcp.WithString("app", mcp.Required(), mcp.Description("The app to bind the skill to, by name, e.g. \"@kaltra/app-kaltra-fi\".")),
+	mcp.WithString("language", mcp.Description("The app's language: "+appLanguageVocabulary+". Omit when the name is unambiguous.")),
 	mcp.WithString("skill", mcp.Required(), mcp.Description("The skill to bind, by name, e.g. \"font-acquisition\".")),
 	mcp.WithString("priority", mcp.Description("How essential the skill is to the app: "+priorityVocabulary+". Defaults to NORMAL when omitted.")),
 )
@@ -278,6 +284,14 @@ var loadPackageContext = mcp.NewTool(
 	LoadPackageContextToolName,
 	mcp.WithDescription("Load the package guidance that governs a file or directory you are working in. The directory of the supplied path is checked for a `.agents.md` (or `agent.md`) file; failing that, parent directories are walked upward. A directory is accepted only when it holds BOTH a guidance file AND a package marker (package.json, pyproject.toml, go.mod or cargo.toml) — a guidance file in a directory with no marker is skipped. Returns the file's contents verbatim, or \"no information available\" when no such directory exists."),
 	mcp.WithString("path", mcp.Required(), mcp.Description("The absolute or relative path of the file or directory you are working in.")),
+)
+
+var getProjectContext = mcp.NewTool(
+	GetProjectContextToolName,
+	mcp.WithDescription("Obtain the rules and extra context for a package (or app) in the monorepo: the contents of the `.agents.md` (or `agent.md`) file at that package's root. Supply EXACTLY ONE of the three arguments. `package-name` resolves the package root by name — the name declared by the package's own marker (package.json `name`, go.mod `module`, pyproject.toml/cargo.toml `name`) or its directory name — and returns that package's guidance. `directory` and `filepath` take an absolute path and walk up the file system to the closest package root, then return its guidance. Returns the file's contents verbatim, or \"no information available\" when the package root carries no guidance file."),
+	mcp.WithString("package-name", mcp.Description("Optional. The package's name, e.g. \"riot\" or \"@glocalize/base\". Resolves the package root and returns its guidance.")),
+	mcp.WithString("directory", mcp.Description("Optional. An absolute directory; the closest package root at or above it is used.")),
+	mcp.WithString("filepath", mcp.Description("Optional. An absolute file path; the closest package root at or above its directory is used.")),
 )
 
 // helpers
@@ -381,4 +395,14 @@ func (m *RiotMcp) agentByName(ctx context.Context, name string) (*orm.Agent, err
 // projectByName finds a project by name.
 func (m *RiotMcp) projectByName(ctx context.Context, name string) (*orm.Project, error) {
 	return m.db.Project.FindFirst(eq[orm.Project, string]("name", name)).Exec(ctx)
+}
+
+// appByName finds an app by name, narrowed by language when one is given:
+// (language, name) is the app's identity, so the same name may exist twice.
+func (m *RiotMcp) appByName(ctx context.Context, name, language string) (*orm.App, error) {
+	preds := []orm.PredicateOf[orm.App]{eq[orm.App, string]("name", name)}
+	if language != "" {
+		preds = append(preds, eq[orm.App, string]("language", language))
+	}
+	return m.db.App.FindFirst(preds...).Exec(ctx)
 }

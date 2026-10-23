@@ -81,6 +81,11 @@ type boundSkill struct {
 	// Via names the skill that pulled this one in as a dependency. It is empty
 	// for skills bound to the agent directly.
 	Via string
+	// Depth is the number of hops from the agent: 0 for a skill bound to the
+	// agent directly, 1 for one of its dependencies, 2 for a dependency of a
+	// dependency, and so on. Closer skills outrank further ones when their
+	// rules conflict, so the document lists them in ascending Depth order.
+	Depth int
 }
 
 // priorityRank orders priorities from most to least essential.
@@ -216,6 +221,13 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 			}
 			if existing, ok := byName[depSkill.Name]; ok {
 				existing.Priority = maxPriority(existing.Priority, parent.Priority)
+				// keep the shallowest route: a skill reached both directly and
+				// as a dependency stays at depth 0, and one reachable by two
+				// chains is attributed to the shorter one.
+				if parent.Depth+1 < existing.Depth {
+					existing.Depth = parent.Depth + 1
+					existing.Via = parentName
+				}
 				continue
 			}
 			byName[depSkill.Name] = &boundSkill{
@@ -223,6 +235,7 @@ func (m *RiotMcp) boundSkills(ctx context.Context, agentID string) ([]boundSkill
 				Description: depSkill.Description,
 				Priority:    parent.Priority,
 				Via:         parentName,
+				Depth:       parent.Depth + 1,
 			}
 			order = append(order, depSkill.Name)
 			// a non-recursive edge loads the dependency and stops there.
@@ -252,7 +265,8 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 	fmt.Fprintf(&b, "- add your agentid as a request header on every MCP call to this mcp service.\n")
 	fmt.Fprintf(&b, "- consume a skill with the get-skill tool — it takes priority over every other mechanism.\n")
 	fmt.Fprintf(&b, "- load every ESSENTIAL skill bound to you before any other work.\n")
-	fmt.Fprintf(&b, "- skills marked _(required by …)_ are dependencies of a bound skill and must be loaded too.\n\n")
+	fmt.Fprintf(&b, "- skills marked _(required by …)_ are dependencies of a bound skill and must be loaded too.\n")
+	fmt.Fprintf(&b, "- **when two skills conflict, the one listed first wins.** The list is ordered highest priority first: a skill closer to you in the hierarchy (fewer hops away) appears earlier and outranks one further down the chain. So if `javascript-development` says one thing and `typescript-development` says another, follow `typescript-development` — it is closer to you. Read the list top to bottom and take the first rule that applies (FIFO).\n\n")
 
 	if len(skills) == 0 {
 		b.WriteString("## Skills\n\n_no skills bound yet_\n")
@@ -278,10 +292,12 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 		if len(bucket) == 0 {
 			continue
 		}
+		// closest to the agent first: depth 0 (bound directly) outranks depth 1
+		// (a dependency), which outranks depth 2, and so on. Ties break by name
+		// so the document is stable between check-ins.
 		sort.SliceStable(bucket, func(i, j int) bool {
-			directI, directJ := bucket[i].Via == "", bucket[j].Via == ""
-			if directI != directJ {
-				return directI
+			if bucket[i].Depth != bucket[j].Depth {
+				return bucket[i].Depth < bucket[j].Depth
 			}
 			return bucket[i].Name < bucket[j].Name
 		})
@@ -1123,7 +1139,7 @@ func (m *RiotMcp) onAssociateAppSkill(ctx context.Context, request mcp.CallToolR
 	if err != nil {
 		return errorResult(fmt.Errorf("associate-app-skill: %w", err)), nil
 	}
-	app, err := m.db.App.FindFirst(eq[orm.App, string]("name", appName)).Exec(ctx)
+	app, err := m.appByName(ctx, appName, stringArg(args, "language"))
 	if err != nil {
 		return errorResult(fmt.Errorf("associate-app-skill: %w", err)), nil
 	}
@@ -1137,20 +1153,32 @@ func (m *RiotMcp) onAssociateAppSkill(ctx context.Context, request mcp.CallToolR
 	if skill == nil {
 		return errorResult(fmt.Errorf("associate-app-skill: skill %q not found", skillName)), nil
 	}
-	existing, err := m.db.AppSkill.FindFirst(eq[orm.AppSkill, string]("app_id", app.Name), eq[orm.AppSkill, string]("skillId", skill.Id)).Exec(ctx)
+	existing, err := m.db.AppSkill.FindFirst(
+		eq[orm.AppSkill, string]("app_language", string(app.Language)),
+		eq[orm.AppSkill, string]("app_name", app.Name),
+		eq[orm.AppSkill, string]("skillId", skill.Id),
+	).Exec(ctx)
 	if err != nil {
 		return errorResult(fmt.Errorf("associate-app-skill: %w", err)), nil
 	}
 	if existing != nil {
-		if _, err := m.db.AppSkill.Update(unique[orm.AppSkill]("app_id", app.Name), eq[orm.AppSkill, string]("skillId", skill.Id)).SetPriority(priority).Exec(ctx); err != nil {
+		if _, err := m.db.AppSkill.UpdateMany(
+			eq[orm.AppSkill, string]("app_language", string(app.Language)),
+			eq[orm.AppSkill, string]("app_name", app.Name),
+			eq[orm.AppSkill, string]("skillId", skill.Id),
+		).SetPriority(priority).Exec(ctx); err != nil {
 			return errorResult(fmt.Errorf("associate-app-skill: %w", err)), nil
 		}
 	} else {
-		if _, err := m.db.AppSkill.Create().SetApp_id(app.Name).SetSkillId(skill.Id).SetPriority(priority).Exec(ctx); err != nil {
+		if _, err := m.db.AppSkill.Create().
+			SetApp_language(app.Language).
+			SetApp_name(app.Name).
+			SetSkillId(skill.Id).
+			SetPriority(priority).Exec(ctx); err != nil {
 			return errorResult(fmt.Errorf("associate-app-skill: %w", err)), nil
 		}
 	}
-	return jsonResult(map[string]any{"associated": true, "app": appName, "skill": skillName, "priority": string(priority)})
+	return jsonResult(map[string]any{"associated": true, "app": appName, "language": string(app.Language), "skill": skillName, "priority": string(priority)})
 }
 
 func (m *RiotMcp) onAssociateAgentProject(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

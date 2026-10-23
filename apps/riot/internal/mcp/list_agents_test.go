@@ -46,7 +46,12 @@ func seedSkill(t *testing.T, server *RiotMcp, name string) {
 func seedProject(t *testing.T, server *RiotMcp, name string, agents ...string) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := server.db.Project.Create().SetName(name).SetSkillsPath("skills").SetAgentsPath("agents").Exec(ctx); err != nil {
+	if _, err := server.db.Project.Create().
+		SetName(name).
+		SetLocation("N/A").
+		SetSkillsPath("skills").
+		SetAgentsPath("agents").
+		Exec(ctx); err != nil {
 		t.Fatalf("create project %s: %v", name, err)
 	}
 	for _, agent := range agents {
