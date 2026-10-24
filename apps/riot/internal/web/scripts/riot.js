@@ -642,6 +642,11 @@ const wireChooser = () => {
         enterCreateState(parent && parent.id ? parent.id : "");
     });
 
+    // New starts a blank skill: the form is emptied and every form-related
+    // search param is dropped, so the url no longer names the skill that was
+    // open. The view params (chart, search) are left alone.
+    document.querySelector("#skill-create").addEventListener("click", () => enterCreateState(""));
+
     document.querySelector("#reference-new").addEventListener("click", openReferenceModal);
 
     document.querySelector("#skill-revert").addEventListener("click", () => {
@@ -756,9 +761,13 @@ const enterCreateState = (dependency = "") => {
     chooserState.pendingDependency = String(dependency || "").trim();
 
     // the create state is linkable: ?method=create carries it, and
-    // ?dependency= names the skill the new one should depend on.
+    // ?dependency= names the skill the new one should depend on. The subject
+    // params are dropped, or the url would still name the skill being edited.
     const url = new URL(window.location.href);
     url.searchParams.set("method", "create");
+    url.searchParams.delete("subject");
+    url.searchParams.delete("class");
+    url.searchParams.delete("skill");
     if (chooserState.pendingDependency) url.searchParams.set("dependency", chooserState.pendingDependency);
     else url.searchParams.delete("dependency");
     window.history.replaceState(window.history.state, "", url.toString());
@@ -783,6 +792,10 @@ const enterCreateState = (dependency = "") => {
     });
 
     setStatus(known ? `new skill depending on ${known.name}` : "new skill");
+
+    // the graph no longer has a selected skill, so its highlight is cleared.
+    markActiveSkill(document.querySelector("#main"), "");
+    syncNavLinks();
     document.querySelector("#skill-name").focus();
 }
 
@@ -800,6 +813,10 @@ const fillForm = (skill) => {
     // in the creation state the same button cancels the create.
     const revert = document.querySelector("#skill-revert");
     if (revert) revert.textContent = chooserState.isNew ? "Cancel" : "Revert";
+
+    // Save writes an existing record; in the creation state it creates one.
+    const save = document.querySelector("#skill-save");
+    if (save) save.textContent = chooserState.isNew ? "Create" : "Save";
 
     document.querySelector("#skill-name").value = skill.name;
     document.querySelector("#skill-description").value = skill.description;
@@ -1091,6 +1108,24 @@ const createReference = async () => {
     setStatus(`reference ${created.name} created`);
 }
 
+// validateNewSkill returns the first reason a new skill cannot be created, or
+// "" when it can. The server derives the url from the name and the url is
+// unique, so a name already in the catalogue would collide on write.
+const validateNewSkill = ({ name, description, url }) => {
+    if (!name) return "name is required";
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return "name must be kebab-case, e.g. go-tui-development";
+    if (!description) return "description is required";
+
+    const clash = chooserState.skills.find(skill => skill.name === name);
+    if (clash) return `a skill named ${name} already exists`;
+
+    if (url) {
+        const taken = chooserState.skills.find(skill => skill.url === url);
+        if (taken) return `url ${url} is already used by ${taken.name}`;
+    }
+    return "";
+}
+
 // saveSkill posts the form through the SaveSkill mutation and refreshes the
 // tree so the new dependency edges are drawn.
 const saveSkill = async () => {
@@ -1101,7 +1136,13 @@ const saveSkill = async () => {
     const keywordsEl = document.querySelector("#skill-keywords");
     const keywords = keywordsEl ? keywordsEl.value.trim() : "";
 
-    if (!name || !description) {
+    if (chooserState.isNew) {
+        const problem = validateNewSkill({ name, description, url });
+        if (problem) {
+            setStatus(problem, true);
+            return;
+        }
+    } else if (!name || !description) {
         setStatus("name and description are required", true);
         return;
     }

@@ -368,6 +368,17 @@ body {
     cursor: default;
 }
 
+/* New starts a blank skill; it is the affirmative action of the row, so it
+   carries the same green as the resizer rather than the neutral grey. */
+.skill-create {
+    background: rgb(190, 210, 60);
+    border-color: rgb(140, 160, 30);
+}
+
+.skill-create:hover {
+    background: rgb(205, 225, 80);
+}
+
 .skill-square {
     width: 26px;
     height: 26px;

@@ -93,6 +93,7 @@
     </label>
     <div class="skill-row skill-actions">
         <span class="skill-status" role="status"></span>
+        <button type="button" id="skill-create" class="skill-button skill-create" title="start a new skill" aria-label="start a new skill">New</button>
         <button type="button" id="skill-revert" class="skill-button">Revert</button>
         <button type="submit" id="skill-save" class="skill-button skill-save">Save</button>
     </div>
