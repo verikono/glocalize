@@ -264,8 +264,11 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 	fmt.Fprintf(&b, "- You are **%s**, agent id `%s`, working in project **%s**.\n", name, id, project)
 	fmt.Fprintf(&b, "- add your agentid as a request header on every MCP call to this mcp service.\n")
 	fmt.Fprintf(&b, "- consume a skill with the get-skill tool — it takes priority over every other mechanism.\n")
-	fmt.Fprintf(&b, "- load every ESSENTIAL skill bound to you before any other work.\n")
-	fmt.Fprintf(&b, "- skills marked _(required by …)_ are dependencies of a bound skill and must be loaded too.\n")
+	fmt.Fprintf(&b, "- **the check-in is not complete until every ESSENTIAL skill below has been fetched with `get-skill` in this session.** ESSENTIAL is a precondition, not a menu: it is not yours to judge whether a skill applies. A skill you skip because it \"does not seem relevant\" is the exact failure this tier exists to prevent.\n")
+	fmt.Fprintf(&b, "- **a load is a tool call, not a recollection.** If the transcript holds no `get-skill` call for a skill, that skill is not loaded — knowing it from a previous session does not count, because skills are edited and your memory of one is stale by definition.\n")
+	fmt.Fprintf(&b, "- skills marked _(required by …)_ are dependencies of a bound skill and must be loaded too — they are ESSENTIAL by inheritance.\n")
+	fmt.Fprintf(&b, "- **a failed `get-skill` stops the session.** Name the skill and the failure, then wait. Do not proceed on assumed knowledge.\n")
+	fmt.Fprintf(&b, "- **prove the gate was passed.** Your first message must list every skill you loaded, by name. A list that omits an ESSENTIAL skill is a false claim of readiness — the same offence as claiming an action you did not take.\n")
 	fmt.Fprintf(&b, "- **when two skills conflict, the one listed first wins.** The list is ordered highest priority first: a skill closer to you in the hierarchy (fewer hops away) appears earlier and outranks one further down the chain. So if `javascript-development` says one thing and `typescript-development` says another, follow `typescript-development` — it is closer to you. Read the list top to bottom and take the first rule that applies (FIFO).\n\n")
 
 	if len(skills) == 0 {
@@ -275,7 +278,7 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 
 	b.WriteString("## Skills\n\n")
 	labels := map[orm.PriorityType]string{
-		orm.Priority_ESSENTIAL: "ESSENTIAL — mandatory — load these immediately",
+		orm.Priority_ESSENTIAL: "ESSENTIAL — mandatory — fetch every one of these with `get-skill` before any other action",
 		orm.Priority_HIGH:      "HIGH — you will almost certainly require these",
 		orm.Priority_NORMAL:    "NORMAL — you will likely need these",
 		orm.Priority_LOW:       "LOW — be aware they exist",
@@ -311,7 +314,24 @@ func renderAgentDocument(name, id, project string, skills []boundSkill) string {
 		}
 		b.WriteString("\n")
 	}
+
+	// The document ends on the obligation, not on the list: an agent that
+	// reads to the bottom must be left with the gate, not a trailing bullet.
+	if essential := countPriority(skills, orm.Priority_ESSENTIAL); essential > 0 {
+		fmt.Fprintf(&b, "## Before you act\n\n")
+		fmt.Fprintf(&b, "Fetch all **%d** ESSENTIAL skills above with `get-skill` — every one, by name, in this session. Then state them in your first message. Skipping a load costs one tool call; acting without it costs the task.\n", essential)
+	}
 	return b.String()
+}
+
+func countPriority(skills []boundSkill, p orm.PriorityType) int {
+	n := 0
+	for _, s := range skills {
+		if s.Priority == p {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *RiotMcp) onGetAgentManifest(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {

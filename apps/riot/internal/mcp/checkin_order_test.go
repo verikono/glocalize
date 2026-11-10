@@ -96,3 +96,42 @@ func TestCheckinDocumentExplainsConflictResolution(t *testing.T) {
 		t.Fatalf("document does not state the FIFO rule:\n%s", doc)
 	}
 }
+
+// TestCheckinDocumentMakesEssentialLoadsMandatory proves the document states
+// the ESSENTIAL tier as a precondition of the session rather than a
+// recommendation, and closes on that obligation. An agent that reads the
+// document top to bottom must be left in no doubt that skipping a load is a
+// protocol violation, not a judgement call.
+func TestCheckinDocumentMakesEssentialLoadsMandatory(t *testing.T) {
+	server := newDependencyMcp(t)
+	root := seedSkillRecord(t, server, "root")
+	bindAgent(t, server, "gated-agent", root.Id)
+	bindEssential(t, server, "gated-agent", "root")
+
+	doc := resultText(t, call(t, server.onAgentCheckin, map[string]any{"agent": "gated-agent", "project": "all"}))
+
+	// the gate must be stated as a precondition, not a suggestion
+	for _, want := range []string{
+		"not complete until every ESSENTIAL skill",
+		"a load is a tool call, not a recollection",
+		"ESSENTIAL by inheritance",
+		"stops the session",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("document does not state %q:\n%s", want, doc)
+		}
+	}
+
+	// the document must end on the obligation, after the skill list
+	gateAt := indexOf(doc, "## Before you act")
+	rootAt := indexOf(doc, "**root**")
+	if gateAt < 0 {
+		t.Fatalf("document has no closing obligation section:\n%s", doc)
+	}
+	if rootAt < 0 || gateAt < rootAt {
+		t.Fatalf("the closing obligation must follow the skill list (root=%d gate=%d):\n%s", rootAt, gateAt, doc)
+	}
+	if !strings.Contains(doc[gateAt:], "Fetch all **1** ESSENTIAL skills") {
+		t.Fatalf("closing section does not count the ESSENTIAL skills:\n%s", doc[gateAt:])
+	}
+}

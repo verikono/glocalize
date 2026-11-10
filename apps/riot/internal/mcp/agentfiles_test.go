@@ -25,6 +25,12 @@ func TestRenderAgentFile_WithTools(t *testing.T) {
 	if !strings.Contains(out, "DO NOT PROCEED") {
 		t.Fatalf("check-in directive must forbid proceeding:\n%s", out)
 	}
+	if !strings.Contains(out, agentEssentialGate) {
+		t.Fatalf("missing ESSENTIAL-load gate:\n%s", out)
+	}
+	if !strings.Contains(out, "fetch every ESSENTIAL skill") {
+		t.Fatalf("the gate must name the ESSENTIAL load obligation:\n%s", out)
+	}
 }
 
 func TestRenderAgentFile_NoTools(t *testing.T) {

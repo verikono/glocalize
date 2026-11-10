@@ -68,7 +68,7 @@ const appLanguageVocabulary = "typescript, go, python"
 
 var agentCheckin = mcp.NewTool(
 	AgentCheckinToolName,
-	mcp.WithDescription("Check in as an agent and receive a stable agent id, returned as an AGENTS.md document listing the skills bound to you by priority. Call this ONCE as the first action of every session, passing your own agent name and the project you are working in; the server returns the same id on every later check-in for the same project+agent. Read the document: it tells you which skills are ESSENTIAL (load them immediately), HIGH, NORMAL and LOW, and within each priority it lists the skills closest to you in the dependency hierarchy first. That order is the conflict-resolution order: when two skills disagree, the one listed earlier wins (FIFO). Consume every skill it lists with the get-skill tool. Thereafter send the returned id in the `agentid` header of every MCP request."),
+	mcp.WithDescription("Check in as an agent and receive a stable agent id, returned as an AGENTS.md document listing the skills bound to you by priority. Call this ONCE as the first action of every session, passing your own agent name and the project you are working in; the server returns the same id on every later check-in for the same project+agent. Read the document: it tells you which skills are ESSENTIAL, HIGH, NORMAL and LOW, and within each priority it lists the skills closest to you in the dependency hierarchy first. That order is the conflict-resolution order: when two skills disagree, the one listed earlier wins (FIFO). THE CHECK-IN IS NOT COMPLETE UNTIL EVERY ESSENTIAL SKILL HAS BEEN FETCHED WITH get-skill IN THIS SESSION — ESSENTIAL is a precondition, not a menu, and it is not yours to judge whether a skill applies. A load is a tool call, not a recollection: if the transcript holds no get-skill call, the skill is not loaded. Thereafter send the returned id in the `agentid` header of every MCP request."),
 	mcp.WithString("agent", mcp.Required(), mcp.Description("The calling agent's name, e.g. \"McpikonArchitect\".")),
 	mcp.WithString("project", mcp.Required(), mcp.Description("The project the agent is checking in for; must be one of the projects listed by get-projects.")),
 )
@@ -99,7 +99,7 @@ var listSkills = mcp.NewTool(
 
 var getSkill = mcp.NewTool(
 	GetSkillToolName,
-	mcp.WithDescription("Read a skill and follow it. The result carries TWO content blocks: the FIRST is the skill rendered as markdown — frontmatter generated from the record (name, description, url, project) followed by the skill's body — READ THAT BLOCK AND OBEY IT; the SECOND repeats the stored record as JSON, verbatim, for machine consumers."),
+	mcp.WithDescription("Read a skill and follow it. The result carries TWO content blocks: the FIRST is the skill rendered as markdown — frontmatter generated from the record (name, description, url, project) followed by the skill's body — READ THAT BLOCK AND OBEY IT; the SECOND repeats the stored record as JSON, verbatim, for machine consumers. Call this for EVERY skill the check-in document marks ESSENTIAL before you take any other action: the check-in is not complete until they are all loaded, and a skill you never fetched is a skill you are not following."),
 	mcp.WithString("project", mcp.Required(), mcp.Description("The project that owns the skill, e.g. \"all\".")),
 	mcp.WithString("name", mcp.Required(), mcp.Description("The skill's name, e.g. \"participating-agent\".")),
 )
