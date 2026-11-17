@@ -112,7 +112,7 @@
 
 	var loadAgents = async () => {
 		var result = await query(
-			"{ Agents { id name description skills { ...SkillTree } } } " + dependencyFragment(DEPENDENCY_DEPTH)
+			"{ Agents { id name description skills { priority skill { ...SkillTree } } } } " + dependencyFragment(DEPENDENCY_DEPTH)
 		);
 		if (result.error || !result.data) {
 			console.error("Agents: failed getting data", result.error);
@@ -251,9 +251,10 @@
 	// its skills are the first branch, and each skill's dependencies hang beneath
 	// it. A skill is placed at most once, so a dependency shared by several
 	// skills appears under the first one that claims it and a cycle cannot
-	// recurse forever.
+	// recurse forever. Only the first branch carries a level: a dependency is
+	// not bound to the agent, so it has no priority of its own.
 	var buildAgentTree = function (agent) {
-		var skills = agent.skills || [];
+		var bindings = agent.skills || [];
 
 		// index every skill we can see, including ones only reachable as a
 		// dependency, so a nested stub can be replaced by its full record.
@@ -263,30 +264,38 @@
 			if (!byId.has(skill.id)) byId.set(skill.id, skill);
 			(skill.dependencies || []).forEach(index);
 		};
-		skills.forEach(index);
+		bindings.forEach(function (binding) {
+			index(binding.skill);
+		});
 
 		var placed = new Set();
-		var build = function (skill) {
+		var build = function (skill, level) {
 			placed.add(skill.id);
 			var node = {
 				id: skill.id,
 				name: skill.name,
 				description: skill.description || "",
+				level: level || "",
 				children: [],
 			};
 			(skill.dependencies || []).forEach(function (dep) {
 				if (placed.has(dep.id)) return;
-				node.children.push(build(byId.get(dep.id) || dep));
+				node.children.push(build(byId.get(dep.id) || dep, ""));
 			});
 			node.children.sort(byName);
 			return node;
 		};
 
-		var root = { id: agent.id, name: agent.name, description: agent.description || "", children: [] };
-		skills.slice().sort(byName).forEach(function (skill) {
-			if (placed.has(skill.id)) return;
-			root.children.push(build(skill));
-		});
+		var root = { id: agent.id, name: agent.name, description: agent.description || "", level: "", children: [] };
+		bindings
+			.slice()
+			.sort(function (a, b) {
+				return byName(a.skill, b.skill);
+			})
+			.forEach(function (binding) {
+				if (!binding.skill || placed.has(binding.skill.id)) return;
+				root.children.push(build(binding.skill, binding.priority));
+			});
 		return root;
 	};
 
@@ -391,7 +400,7 @@
 				return d.depth === 0 ? ROOT_FONT_PX : SKILL_FONT_PX;
 			})
 			.text(function (d) {
-				return d.data.name;
+				return d.data.level ? d.data.name + " (" + d.data.level + ")" : d.data.name;
 			});
 
 		// the root is the agent itself, so it is drawn as the tree's heading. The

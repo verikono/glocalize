@@ -113,6 +113,18 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 		},
 	})
 
+	// AgentSkill is the binding row, not the skill: it carries the priority the
+	// agent holds the skill at, which a bare Skill record cannot express.
+	agentSkillType := graphql.NewObject(graphql.ObjectConfig{
+		Name: "AgentSkill",
+		Fields: graphql.Fields{
+			"agentId":  &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"skillId":  &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"priority": &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"skill":    &graphql.Field{Type: skillType, Resolve: r.agentSkillSkill},
+		},
+	})
+
 	agentType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "Agent",
 		Fields: graphql.Fields{
@@ -124,7 +136,7 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 			"metadata":     &graphql.Field{Type: graphql.String},
 			"createdAt":    &graphql.Field{Type: dateTimeScalar},
 			"updatedAt":    &graphql.Field{Type: dateTimeScalar},
-			"skills":       &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.agentSkills},
+			"skills":       &graphql.Field{Type: graphql.NewList(agentSkillType), Resolve: r.agentSkills},
 		},
 	})
 
@@ -762,12 +774,23 @@ func (r *resolver) appStyles(p graphql.ResolveParams) (interface{}, error) {
 	return r.db.StyleToken.FindMany(eq[orm.StyleToken, string]("app_id", app.Name)).Exec(r.ctx(p))
 }
 
+// agentSkills returns the agent's binding rows, so each skill arrives with the
+// priority the agent holds it at.
 func (r *resolver) agentSkills(p graphql.ResolveParams) (interface{}, error) {
 	agent, ok := p.Source.(*orm.Agent)
 	if !ok || agent == nil {
-		return []*orm.Skill{}, nil
+		return []*orm.AgentSkill{}, nil
 	}
-	return r.skillsForAgent(r.ctx(p), agent.Id)
+	return r.db.AgentSkill.FindMany(eq[orm.AgentSkill, string]("agentId", agent.Id)).Exec(r.ctx(p))
+}
+
+// agentSkillSkill loads the skill a binding row points at.
+func (r *resolver) agentSkillSkill(p graphql.ResolveParams) (interface{}, error) {
+	row, ok := p.Source.(*orm.AgentSkill)
+	if !ok || row == nil {
+		return nil, nil
+	}
+	return r.db.Skill.FindFirst(eq[orm.Skill, string]("id", row.SkillId)).Exec(r.ctx(p))
 }
 
 // skillsForAgent loads the skills bound to an agent, in binding order.
