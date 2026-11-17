@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
 	orm "github.com/verikono/glocalize/apps/riot/internal/orm"
@@ -74,27 +75,100 @@ func (m *RiotMcp) Handler() http.Handler {
 	return m.httpServer
 }
 
+// toolDefinitions returns every tool definition the server exposes, in
+// registration order. It is static: no database is needed to describe the
+// surface, which is what `riot tools` relies on.
+func toolDefinitions() []mcp.Tool {
+	return []mcp.Tool{
+		agentCheckin,
+		getAgentManifest,
+		listAgents,
+		getProjects,
+		listSkills,
+		getSkill,
+		addSkill,
+		updateSkill,
+		deleteSkill,
+		mutateSkill,
+		createAgent,
+		updateAgent,
+		deleteAgent,
+		associateAgentSkill,
+		associateAppSkill,
+		associateAgentProject,
+		addReference,
+		getReference,
+		dropReference,
+		associateSkillReference,
+		dropSkillReference,
+		loadPackageContext,
+		getProjectContext,
+	}
+}
+
+// Tools returns every tool definition the server exposes, in registration
+// order, for callers that only need to describe the surface.
+func Tools() []mcp.Tool {
+	return toolDefinitions()
+}
+
+// handlerFor returns the handler bound to a tool name, or nil when the name is
+// not part of the surface.
+func (m *RiotMcp) handlerFor(name string) server.ToolHandlerFunc {
+	switch name {
+	case AgentCheckinToolName:
+		return m.onAgentCheckin
+	case GetAgentManifestToolName:
+		return m.onGetAgentManifest
+	case ListAgentsToolName:
+		return m.onListAgents
+	case GetProjectsToolName:
+		return m.onGetProjects
+	case ListSkillsToolName:
+		return m.onListSkills
+	case GetSkillToolName:
+		return m.onGetSkill
+	case AddSkillToolName:
+		return m.onAddSkill
+	case UpdateSkillToolName:
+		return m.onUpdateSkill
+	case DeleteSkillToolName:
+		return m.onDeleteSkill
+	case MutateSkillToolName:
+		return m.onMutateSkill
+	case CreateAgentToolName:
+		return m.onCreateAgent
+	case UpdateAgentToolName:
+		return m.onUpdateAgent
+	case DeleteAgentToolName:
+		return m.onDeleteAgent
+	case AssociateAgentSkillToolName:
+		return m.onAssociateAgentSkill
+	case AssociateAppSkillToolName:
+		return m.onAssociateAppSkill
+	case AssociateAgentProjectToolName:
+		return m.onAssociateAgentProject
+	case AddReferenceToolName:
+		return m.onAddReference
+	case GetReferenceToolName:
+		return m.onGetReference
+	case DropReferenceToolName:
+		return m.onDropReference
+	case AssociateSkillReferenceToolName:
+		return m.onAssociateSkillReference
+	case DropSkillReferenceToolName:
+		return m.onDropSkillReference
+	case LoadPackageContextToolName:
+		return m.onLoadPackageContext
+	case GetProjectContextToolName:
+		return m.onGetProjectContext
+	}
+	return nil
+}
+
 // registerTools registers the full tool surface with the underlying server.
 func (m *RiotMcp) registerTools() {
-	m.server.AddTool(agentCheckin, m.onAgentCheckin)
-	m.server.AddTool(getAgentManifest, m.onGetAgentManifest)
-	m.server.AddTool(listAgents, m.onListAgents)
-	m.server.AddTool(getProjects, m.onGetProjects)
-	m.server.AddTool(listSkills, m.onListSkills)
-	m.server.AddTool(getSkill, m.onGetSkill)
-	m.server.AddTool(addSkill, m.onAddSkill)
-	m.server.AddTool(updateSkill, m.onUpdateSkill)
-	m.server.AddTool(deleteSkill, m.onDeleteSkill)
-	m.server.AddTool(mutateSkill, m.onMutateSkill)
-	m.server.AddTool(createAgent, m.onCreateAgent)
-	m.server.AddTool(updateAgent, m.onUpdateAgent)
-	m.server.AddTool(deleteAgent, m.onDeleteAgent)
-	m.server.AddTool(associateAgentSkill, m.onAssociateAgentSkill)
-	m.server.AddTool(associateAppSkill, m.onAssociateAppSkill)
-	m.server.AddTool(associateAgentProject, m.onAssociateAgentProject)
-	m.server.AddTool(addReference, m.onAddReference)
-	m.server.AddTool(dropReference, m.onDropReference)
-	m.server.AddTool(associateSkillReference, m.onAssociateSkillReference)
-	m.server.AddTool(dropSkillReference, m.onDropSkillReference)
-	m.server.AddTool(loadPackageContext, m.onLoadPackageContext)
+	for _, tool := range toolDefinitions() {
+		m.server.AddTool(tool, m.handlerFor(tool.Name))
+	}
 }

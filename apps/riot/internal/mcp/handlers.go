@@ -334,6 +334,40 @@ func countPriority(skills []boundSkill, p orm.PriorityType) int {
 	return n
 }
 
+// skillReferences returns the references attached to a skill, ordered by name so
+// the rendered list is stable between reads.
+func (m *RiotMcp) skillReferences(ctx context.Context, skillID string) ([]*orm.Reference, error) {
+	links, err := m.db.SkillReference.FindMany(eq[orm.SkillReference, string]("skillId", skillID)).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]*orm.Reference, 0, len(links))
+	for _, link := range links {
+		ref, err := m.db.Reference.FindFirst(eq[orm.Reference, string]("name", link.ReferenceName)).Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if ref != nil {
+			refs = append(refs, ref)
+		}
+	}
+	sort.SliceStable(refs, func(i, j int) bool { return refs[i].Name < refs[j].Name })
+	return refs, nil
+}
+
+// renderSkillReferences appends the reference catalogue to a skill document. A
+// reference is not inlined: the agent is told the name and what it holds, and
+// fetches it with get-reference only when the task needs it.
+func renderSkillReferences(refs []*orm.Reference) string {
+	var b strings.Builder
+	b.WriteString("\n## References\n\n")
+	b.WriteString("Resources this skill draws on. They are NOT inlined — call `get-reference` with the name when the task needs one.\n\n")
+	for _, ref := range refs {
+		fmt.Fprintf(&b, "- **%s** (%s) — %s\n", ref.Name, ref.ResourceType, ref.Description)
+	}
+	return b.String()
+}
+
 func (m *RiotMcp) onGetAgentManifest(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	records, err := m.db.Agent.FindMany().OrderBy(orm.Field[orm.Agent, string]{Column: "name"}.Asc()).Exec(ctx)
 	if err != nil {
@@ -494,6 +528,13 @@ func (m *RiotMcp) onGetSkill(ctx context.Context, request mcp.CallToolRequest) (
 		return errorResult(fmt.Errorf("get-skill: skill %q not found in project %q", name, project)), nil
 	}
 	document := fmt.Sprintf("---\nname: %s\ndescription: %s\nurl: %s\nkeywords: %s\nproject: %s\n---\n%s\n", skill.Name, skill.Description, skill.Url, skill.Keywords, project, skill.Content)
+	references, err := m.skillReferences(ctx, skill.Id)
+	if err != nil {
+		return errorResult(fmt.Errorf("get-skill: %w", err)), nil
+	}
+	if len(references) > 0 {
+		document += renderSkillReferences(references)
+	}
 	record, err := jsonMarshal(skill)
 	if err != nil {
 		return errorResult(err), nil
@@ -1266,6 +1307,37 @@ func (m *RiotMcp) onAddReference(ctx context.Context, request mcp.CallToolReques
 		return errorResult(fmt.Errorf("add-reference: %w", err)), nil
 	}
 	return jsonResult(record)
+}
+
+func (m *RiotMcp) onGetReference(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := request.GetArguments()
+	name := stringArg(args, "name")
+	if name == "" {
+		return errorResult(fmt.Errorf("get-reference: name is required")), nil
+	}
+	ref, err := m.db.Reference.FindFirst(eq[orm.Reference, string]("name", name)).Exec(ctx)
+	if err != nil {
+		return errorResult(fmt.Errorf("get-reference: %w", err)), nil
+	}
+	if ref == nil {
+		return errorResult(fmt.Errorf("get-reference: reference %q not found", name)), nil
+	}
+	content := ""
+	if ref.Content != nil {
+		content = *ref.Content
+	}
+	document := fmt.Sprintf("---\nname: %s\ndescription: %s\naccessType: %s\nresourceType: %s\n---\n%s\n",
+		ref.Name, ref.Description, ref.AccessType, ref.ResourceType, content)
+	record, err := jsonMarshal(ref)
+	if err != nil {
+		return errorResult(err), nil
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			mcp.TextContent{Type: "text", Text: document},
+			mcp.TextContent{Type: "text", Text: record},
+		},
+	}, nil
 }
 
 func (m *RiotMcp) onDropReference(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

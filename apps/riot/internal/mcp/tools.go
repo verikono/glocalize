@@ -47,6 +47,8 @@ const (
 	AssociateAgentProjectToolName = "associate-agent-project"
 	// AddReferenceToolName creates a reference.
 	AddReferenceToolName = "add-reference"
+	// GetReferenceToolName reads a reference's content.
+	GetReferenceToolName = "get-reference"
 	// DropReferenceToolName deletes a reference.
 	DropReferenceToolName = "drop-reference"
 	// AssociateSkillReferenceToolName attaches a reference to a skill.
@@ -258,6 +260,12 @@ var addReference = mcp.NewTool(
 	mcp.WithString("accessType", mcp.Required(), mcp.Description("How the reference is addressed: static or url. A value outside those two is rejected.")),
 	mcp.WithString("resourceType", mcp.Required(), mcp.Description("What the reference is: literature, image, video, commands, script or configuration. A value outside those six is rejected.")),
 	mcp.WithString("content", mcp.Description("The payload when accessType is static, or the address to fetch when it is url. Optional.")),
+)
+
+var getReference = mcp.NewTool(
+	GetReferenceToolName,
+	mcp.WithDescription("Read a reference and follow it. A reference is a resource a skill draws on — documentation, commands, a script, a configuration — held outside the skill body so the skill stays small and the detail is fetched only when needed. The result carries TWO content blocks: the FIRST is the reference rendered as markdown (name, description, accessType, resourceType, then its content), READ THAT BLOCK AND OBEY IT; the SECOND repeats the stored record as JSON. Call this when a skill names a reference you need, or when get-skill listed one under its references. A reference whose accessType is `url` carries an address rather than a payload: fetch it yourself."),
+	mcp.WithString("name", mcp.Required(), mcp.Description("The reference's name, e.g. \"aws-database-dynamodb\".")),
 )
 
 var dropReference = mcp.NewTool(
