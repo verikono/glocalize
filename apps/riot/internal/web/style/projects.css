@@ -163,6 +163,101 @@ body {
     font-weight: 600;
 }
 
+/* the shared form rules, repeated from main.css so this page stands alone: it is served without the skills stylesheet. */
+.skill-form {
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+}
+
+.skill-row {
+    gap: 6px;
+    align-items: center;
+}
+
+.skill-title {
+    flex: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgb(37, 37, 37);
+}
+
+.skill-field-group {
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.skill-label {
+    flex: none;
+    font-size: 11px;
+    color: rgb(110, 110, 110);
+}
+
+.skill-field {
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 6px;
+    font: inherit;
+    line-height: 16px;
+    color: inherit;
+    min-width: 0;
+}
+
+.skill-row .skill-field {
+    flex: 1;
+}
+
+.skill-actions {
+    justify-content: flex-end;
+}
+
+.skill-status {
+    flex: 1;
+    color: rgb(110, 110, 110);
+}
+
+.skill-status.errored {
+    color: rgb(180, 40, 40);
+    padding: 0;
+}
+
+.skill-button {
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 14px;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.skill-button:hover {
+    background: rgb(250, 250, 250);
+}
+
+.skill-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.skill-create {
+    background: rgb(190, 210, 60);
+    border-color: rgb(140, 160, 30);
+}
+
+.skill-create:hover {
+    background: rgb(205, 225, 80);
+}
+
+/* the form is a fixed band above the tree: it must not grow, or the tree loses its remaining height. */
+#project-form {
+    flex: none;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgb(190, 190, 190);
+}
+
 /* the tree is the flex child that grows and scrolls; its rows are indented by an inline padding-left per depth. */
 .project-tree {
     flex: 1;

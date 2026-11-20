@@ -14,6 +14,8 @@
 		filter: "",
 		selected: "",
 		collapsed: new Set(),
+		loaded: null,
+		isNew: false,
 	};
 
 	var query = async (document, variables) => {
@@ -45,7 +47,7 @@
 	};
 
 	var loadProjects = async () => {
-		var result = await query("{ Projects { name agents { id name description skills { priority skill { ...SkillTree } } } } } " + dependencyFragment(SKILL_DEPTH));
+		var result = await query("{ Projects { name location skillsPath agentsPath agents { id name description skills { priority skill { ...SkillTree } } } } } " + dependencyFragment(SKILL_DEPTH));
 		if (result.error || !result.data) {
 			console.error("Projects: failed getting data", result.error);
 			return null;
@@ -77,6 +79,112 @@
 				return String(project.name || "").toLowerCase() === needle;
 			}) || null
 		);
+	};
+
+	// fillProjectForm writes a project into the form; the name is read-only when updating because it is the primary key and is never renamed.
+	var fillProjectForm = function (project) {
+		var record = project || {};
+
+		var title = document.querySelector("#project-form-title");
+		if (title) title.textContent = state.isNew ? "New project" : "Update " + (record.name || "");
+
+		var revert = document.querySelector("#project-form-revert");
+		if (revert) revert.textContent = state.isNew ? "Cancel" : "Revert";
+
+		var save = document.querySelector("#project-form-save");
+		if (save) save.textContent = state.isNew ? "Create" : "Save";
+
+		var name = document.querySelector("#project-form-name");
+		if (name) {
+			name.value = record.name || "";
+			name.readOnly = !state.isNew;
+		}
+
+		var location = document.querySelector("#project-form-location");
+		if (location) location.value = record.location || "";
+
+		var skillsPath = document.querySelector("#project-form-skills-path");
+		if (skillsPath) skillsPath.value = record.skillsPath || "";
+
+		var agentsPath = document.querySelector("#project-form-agents-path");
+		if (agentsPath) agentsPath.value = record.agentsPath || "";
+	};
+
+	// setProjectStatus writes a short message into the form's status line.
+	var setProjectStatus = function (message, isError) {
+		var status = document.querySelector("#project-form-status");
+		if (!status) return;
+		status.textContent = message;
+		status.classList.toggle("errored", !!isError);
+	};
+
+	var startNewProject = function () {
+		state.isNew = true;
+		state.loaded = null;
+		fillProjectForm(null);
+		setProjectStatus("new project");
+		var name = document.querySelector("#project-form-name");
+		if (name) name.focus();
+	};
+
+	// revertProjectForm cancels a create back to the focused project, or restores the loaded record's values.
+	var revertProjectForm = function () {
+		if (state.isNew) {
+			state.isNew = false;
+			state.loaded = findProject(state.selected) || findProject("all");
+			fillProjectForm(state.loaded);
+			setProjectStatus("cancelled");
+			return;
+		}
+		fillProjectForm(state.loaded);
+		setProjectStatus("reverted");
+	};
+
+	// saveProject posts the form through the SaveProject mutation, then reloads the list and redraws the tree for the saved project.
+	var saveProject = async function () {
+		var nameEl = document.querySelector("#project-form-name");
+		var locationEl = document.querySelector("#project-form-location");
+		var skillsEl = document.querySelector("#project-form-skills-path");
+		var agentsEl = document.querySelector("#project-form-agents-path");
+
+		var name = nameEl ? nameEl.value.trim() : "";
+		var location = locationEl ? locationEl.value.trim() : "";
+		var skillsPath = skillsEl ? skillsEl.value.trim() : "";
+		var agentsPath = agentsEl ? agentsEl.value.trim() : "";
+
+		if (!name) {
+			setProjectStatus("name is required", true);
+			return;
+		}
+		if (state.isNew && findProject(name)) {
+			setProjectStatus("a project named " + name + " already exists", true);
+			return;
+		}
+
+		var input = { name: name, location: location, skillsPath: skillsPath, agentsPath: agentsPath, isNew: state.isNew };
+
+		setProjectStatus("saving…");
+		var result = await query("mutation SaveProject($input: ProjectInput!) { SaveProject(input: $input) { name location skillsPath agentsPath } }", { input: input });
+		if (result.error || !result.data || !result.data.SaveProject) {
+			var failure = result.error;
+			var message = failure && failure.message ? failure.message : Array.isArray(failure) && failure[0] && failure[0].message ? failure[0].message : String(failure || "unknown error");
+			setProjectStatus("save failed: " + message, true);
+			return;
+		}
+
+		var saved = result.data.SaveProject;
+		var wasNew = state.isNew;
+		state.loaded = saved;
+		state.isNew = false;
+		setProjectStatus("saved");
+
+		var projects = await loadProjects();
+		if (projects) state.projects = projects;
+		renderList();
+
+		// a create focuses the new project; an update keeps the focused one.
+		var focusName = wasNew ? saved.name : state.selected || saved.name;
+		selectProject(focusName, { push: false });
 	};
 
 	var renderList = function () {
@@ -125,6 +233,11 @@
 		if (project && String(project.name).toLowerCase() === "all") project = null;
 
 		state.selected = project ? project.name : "";
+
+		// the form always shows something editable: the focused project, or "all" when nothing is focused.
+		state.isNew = false;
+		state.loaded = project || findProject("all");
+		fillProjectForm(state.loaded);
 
 		var heading = document.querySelector("#project-name");
 		if (heading) heading.textContent = project ? project.name : "All";
@@ -237,6 +350,22 @@
 		});
 	};
 
+	var wireProjectForm = function () {
+		var form = document.querySelector("#project-form");
+		if (!form) return;
+
+		var newButton = document.querySelector("#project-form-new");
+		if (newButton) newButton.addEventListener("click", startNewProject);
+
+		var revertButton = document.querySelector("#project-form-revert");
+		if (revertButton) revertButton.addEventListener("click", revertProjectForm);
+
+		form.addEventListener("submit", function (event) {
+			event.preventDefault();
+			saveProject();
+		});
+	};
+
 	var wireSearch = function () {
 		var input = document.querySelector("#projects-search");
 		if (!input) return;
@@ -281,6 +410,7 @@
 	var main = async function () {
 		wireSearch();
 		wireResizer();
+		wireProjectForm();
 
 		var projects = await loadProjects();
 		if (!projects) {

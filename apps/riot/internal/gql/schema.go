@@ -293,6 +293,17 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 		},
 	})
 
+	projectInputType := graphql.NewInputObject(graphql.InputObjectConfig{
+		Name: "ProjectInput",
+		Fields: graphql.InputObjectConfigFieldMap{
+			"name":       &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"location":   &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"skillsPath": &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"agentsPath": &graphql.InputObjectFieldConfig{Type: graphql.NewNonNull(graphql.String)},
+			"isNew":      &graphql.InputObjectFieldConfig{Type: graphql.Boolean},
+		},
+	})
+
 	// ReferenceInput is the write shape for a reference. `name` is the unique
 	// identity, so a create with an existing name is rejected rather than
 	// silently overwriting the stored resource.
@@ -323,6 +334,13 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(referenceInputType)},
 				},
 				Resolve: r.saveReference,
+			},
+			"SaveProject": &graphql.Field{
+				Type: projectType,
+				Args: graphql.FieldConfigArgument{
+					"input": &graphql.ArgumentConfig{Type: graphql.NewNonNull(projectInputType)},
+				},
+				Resolve: r.saveProject,
 			},
 			"BindAgentSkills": &graphql.Field{
 				Type: graphql.NewList(skillType),
@@ -681,6 +699,32 @@ func (r *resolver) addSkillDependencies(p graphql.ResolveParams) (interface{}, e
 
 func (r *resolver) references(p graphql.ResolveParams) (interface{}, error) {
 	return r.db.Reference.FindMany().Exec(r.ctx(p))
+}
+
+// saveProject creates a project, or updates the one named by `name`. The name is the primary key, so an update never renames it. @see .agents.md "### project identity"
+func (r *resolver) saveProject(p graphql.ResolveParams) (interface{}, error) {
+	input, ok := p.Args["input"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("SaveProject: input is required")
+	}
+
+	name, _ := input["name"].(string)
+	location, _ := input["location"].(string)
+	skillsPath, _ := input["skillsPath"].(string)
+	agentsPath, _ := input["agentsPath"].(string)
+	isNew, _ := input["isNew"].(bool)
+
+	if name == "" {
+		return nil, fmt.Errorf("SaveProject: name is required")
+	}
+
+	ctx := r.ctx(p)
+
+	if isNew {
+		return r.db.Project.Create().SetName(name).SetLocation(location).SetSkillsPath(skillsPath).SetAgentsPath(agentsPath).Exec(ctx)
+	}
+
+	return r.db.Project.Update(unique[orm.Project]("name", name)).SetLocation(location).SetSkillsPath(skillsPath).SetAgentsPath(agentsPath).Exec(ctx)
 }
 
 // saveReference creates a reference. The name is the unique identity, so an

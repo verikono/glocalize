@@ -34,11 +34,25 @@ input ReferenceInput {
 	content: String
 }
 
+# ProjectInput is the write shape for a project. `name` is the unique identity,
+# so it is never renamed: an update addresses the record by the name it already
+# has. `isNew` selects create over update; omitting it updates.
+input ProjectInput {
+	name: String!
+	location: String!
+	skillsPath: String!
+	agentsPath: String!
+	isNew: Boolean
+}
+
 type Mutation {
 	# SaveSkill creates or updates a skill and replaces its dependency and
 	# reference sets. Returns the stored record, including its resolved
 	# dependencies and references.
 	SaveSkill(input: SkillInput!): Skill!
+
+	# SaveProject creates a project, or updates the one named by `name`. Returns the stored record.
+	SaveProject(input: ProjectInput!): Project!
 
 	# SaveReference creates a reference. Returns the stored record.
 	SaveReference(input: ReferenceInput!): Reference!
