@@ -2,12 +2,12 @@
     "name": "@glocalize/base",
     "version": "0.1.0",
     "type": "module",
-    "packageManager": "bun@1.4.3",
+    "packageManager": "bun@1.4.5",
     "dependencies": {
     },
     "devDependencies": {
         "typescript": "^7.0.2",
-        "vitest": "^5.0.5"
+        "vitest": "^5.1.1"
     },
     "workspaces": [
         "apps/litany",
