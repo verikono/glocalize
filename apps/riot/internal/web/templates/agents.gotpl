@@ -7,3 +7,15 @@
     <h1 id="agent-name" class="agent-name"></h1>
     <div id="agent-graph" class="agent-graph"></div>
 </section>
+<div id="unbind-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-modal-close></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="unbind-title">
+        <div id="unbind-title" class="modal-title">Remove skill</div>
+        <div id="unbind-body" class="modal-body"></div>
+        <div class="modal-actions">
+            <span id="unbind-status" class="modal-status" role="status"></span>
+            <button type="button" id="unbind-cancel" class="modal-button">Cancel</button>
+            <button type="button" id="unbind-confirm" class="modal-button modal-confirm">Remove</button>
+        </div>
+    </div>
+</div>

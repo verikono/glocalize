@@ -333,6 +333,14 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 				},
 				Resolve: r.bindAgentSkills,
 			},
+			"UnbindAgentSkill": &graphql.Field{
+				Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(skillType))),
+				Args: graphql.FieldConfigArgument{
+					"agentId": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"skillId": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+				},
+				Resolve: r.unbindAgentSkill,
+			},
 			"AddSkillDependencies": &graphql.Field{
 				Type: graphql.NewList(skillType),
 				Args: graphql.FieldConfigArgument{
@@ -588,6 +596,24 @@ func (r *resolver) bindAgentSkills(p graphql.ResolveParams) (interface{}, error)
 		return nil
 	})
 	if err != nil {
+		return nil, err
+	}
+	return r.skillsForAgent(ctx, agentID)
+}
+
+// unbindAgentSkill detaches one skill from one agent. A pair that is not bound is a no-op, so the call is idempotent.
+func (r *resolver) unbindAgentSkill(p graphql.ResolveParams) (interface{}, error) {
+	agentID, _ := p.Args["agentId"].(string)
+	skillID, _ := p.Args["skillId"].(string)
+	if agentID == "" {
+		return nil, fmt.Errorf("UnbindAgentSkill: agentId is required")
+	}
+	if skillID == "" {
+		return nil, fmt.Errorf("UnbindAgentSkill: skillId is required")
+	}
+
+	ctx := r.ctx(p)
+	if _, err := r.db.AgentSkill.DeleteMany(eq[orm.AgentSkill, string]("agentId", agentID), eq[orm.AgentSkill, string]("skillId", skillID)).Exec(ctx); err != nil {
 		return nil, err
 	}
 	return r.skillsForAgent(ctx, agentID)

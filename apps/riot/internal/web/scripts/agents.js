@@ -27,8 +27,10 @@
 	var EDGE_POP_GAP = 10;
 	var EDGE_BOX = 11;
 
-	// the gap between a skill label's right edge and its add button.
+	// the gap between a skill label's right edge and its add button, and the gap
+	// between the add button and the remove button beside it.
 	var SKILL_ADD_GAP = 14;
+	var SKILL_REMOVE_GAP = 8;
 
 	var state = {
 		agents: [],
@@ -69,6 +71,14 @@
 		skillId: "",
 		selected: new Set(),
 		needle: "",
+	};
+
+	// unbindState is the confirmation modal: the agent-skill pair awaiting
+	// confirmation and whether its request is in flight.
+	var unbindState = {
+		agentId: "",
+		skillId: "",
+		busy: false,
 	};
 
 	// hoveredSkillId is the skill whose add button is showing, and hoverTimer
@@ -657,6 +667,42 @@
 				event.stopPropagation();
 				closeSkillAddControl();
 			});
+
+			// a bound skill also gets a remove button, immediately right of the add
+			// button. A dependency is not bound to the agent, so it has none.
+			if (target.depth === 1) {
+				var removeCx = cx + ADD_R + SKILL_REMOVE_GAP + ADD_R;
+				var remove = overlay.append("g").attr("class", "skill-remove-button");
+				remove.append("circle")
+					.attr("cx", removeCx)
+					.attr("cy", cy)
+					.attr("r", ADD_R)
+					.attr("fill", "rgb(190, 50, 50)");
+				remove.append("path")
+					.attr("d", "M" + (removeCx - ADD_R * 0.42) + "," + cy + "L" + (removeCx + ADD_R * 0.42) + "," + cy)
+					.attr("fill", "none")
+					.attr("stroke", "rgb(255, 255, 255)")
+					.attr("stroke-width", ADD_R * 0.16)
+					.attr("stroke-linecap", "round");
+
+				remove.on("mouseenter", function () {
+					clearTimeout(hoverTimer);
+				}).on("mouseleave", function () {
+					scheduleHoverClear();
+				});
+
+				remove.style("cursor", "pointer").on("click", function (event) {
+					event.stopPropagation();
+					clearTimeout(hoverTimer);
+					openUnbindModal(agent.id, skillId);
+				});
+
+				remove.on("contextmenu", function (event) {
+					event.preventDefault();
+					event.stopPropagation();
+					closeUnbindModal();
+				});
+			}
 
 			if (!skillAddState.open) return;
 
@@ -1283,6 +1329,115 @@
 		if (refreshed) renderAgentTree(refreshed);
 	};
 
+	// skillNameOf resolves a skill's display name from the agent's bindings,
+	// falling back to the catalogue.
+	var skillNameOf = function (agent, skillId) {
+		var binding = (agent && agent.skills || []).find(function (candidate) {
+			return candidate.skill && candidate.skill.id === skillId;
+		});
+		if (binding && binding.skill) return binding.skill.name;
+		var known = state.skills.find(function (candidate) {
+			return candidate.id === skillId;
+		});
+		return known ? known.name : skillId;
+	};
+
+	// openUnbindModal stages the agent-skill pair and shows the confirmation.
+	var openUnbindModal = function (agentId, skillId) {
+		var modal = document.querySelector("#unbind-modal");
+		if (!modal) return;
+
+		var agent = state.agents.find(function (candidate) {
+			return candidate.id === agentId;
+		});
+		var agentName = agent ? agent.name : agentId;
+		var skillName = skillNameOf(agent, skillId);
+
+		unbindState.agentId = agentId;
+		unbindState.skillId = skillId;
+		unbindState.busy = false;
+
+		var body = document.querySelector("#unbind-body");
+		if (body) body.textContent = "“" + skillName + "” will be disassociated from " + agentName + ". The skill itself is not deleted.";
+		var status = document.querySelector("#unbind-status");
+		if (status) status.textContent = "";
+		var confirm = document.querySelector("#unbind-confirm");
+		if (confirm) confirm.disabled = false;
+
+		modal.hidden = false;
+		var cancel = document.querySelector("#unbind-cancel");
+		if (cancel) cancel.focus();
+	};
+
+	// closeUnbindModal hides the confirmation and clears the staged pair.
+	var closeUnbindModal = function () {
+		var modal = document.querySelector("#unbind-modal");
+		if (modal) modal.hidden = true;
+		unbindState.agentId = "";
+		unbindState.skillId = "";
+		unbindState.busy = false;
+		var status = document.querySelector("#unbind-status");
+		if (status) status.textContent = "";
+		var confirm = document.querySelector("#unbind-confirm");
+		if (confirm) confirm.disabled = false;
+	};
+
+	// confirmUnbind runs the Unbind mutation for the staged pair. The confirm
+	// button stays disabled until the request settles, so a double click cannot
+	// submit twice.
+	var confirmUnbind = async function () {
+		if (unbindState.busy) return;
+		if (!unbindState.agentId || !unbindState.skillId) return;
+
+		var agentId = unbindState.agentId;
+		var skillId = unbindState.skillId;
+		var status = document.querySelector("#unbind-status");
+		var confirm = document.querySelector("#unbind-confirm");
+
+		unbindState.busy = true;
+		if (confirm) confirm.disabled = true;
+		if (status) status.textContent = "removing…";
+
+		var result = await query(
+			"mutation Unbind($agentId: String!, $skillId: String!) { UnbindAgentSkill(agentId: $agentId, skillId: $skillId) { id name } }",
+			{ agentId: agentId, skillId: skillId }
+		);
+		if (result.error) {
+			unbindState.busy = false;
+			if (confirm) confirm.disabled = false;
+			if (status) status.textContent = "could not remove the skill: " + String(result.error.message || result.error);
+			return;
+		}
+
+		closeUnbindModal();
+
+		var agents = await loadAgents();
+		if (agents) state.agents = agents;
+		var refreshed = state.agents.find(function (candidate) {
+			return candidate.id === state.selected;
+		});
+		if (refreshed) renderAgentTree(refreshed);
+		renderList();
+	};
+
+	// wireUnbindModal binds the confirmation's cancel, backdrop, confirm and
+	// Escape actions.
+	var wireUnbindModal = function () {
+		var modal = document.querySelector("#unbind-modal");
+		if (!modal) return;
+
+		var cancel = document.querySelector("#unbind-cancel");
+		if (cancel) cancel.addEventListener("click", closeUnbindModal);
+		var backdrop = modal.querySelector("[data-modal-close]");
+		if (backdrop) backdrop.addEventListener("click", closeUnbindModal);
+		var confirm = document.querySelector("#unbind-confirm");
+		if (confirm) confirm.addEventListener("click", confirmUnbind);
+
+		document.addEventListener("keydown", function (event) {
+			if (event.key === "Escape" && !modal.hidden) closeUnbindModal();
+		});
+	};
+
 	// wireSearch filters the list as the needle is typed. The filter is local,
 	// so it never touches the url: only the selected agent is linkable.
 	var wireSearch = function () {
@@ -1330,6 +1485,7 @@
 	var main = async function () {
 		wireSearch();
 		wireResizer();
+		wireUnbindModal();
 
 		var agents = await loadAgents();
 		if (!agents) {

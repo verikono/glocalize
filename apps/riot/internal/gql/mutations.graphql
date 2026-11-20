@@ -42,4 +42,7 @@ type Mutation {
 
 	# SaveReference creates a reference. Returns the stored record.
 	SaveReference(input: ReferenceInput!): Reference!
+
+	# UnbindAgentSkill detaches one skill from one agent; an unbound pair is a no-op. Returns the remaining skills.
+	UnbindAgentSkill(agentId: String!, skillId: String!): [Skill!]!
 }

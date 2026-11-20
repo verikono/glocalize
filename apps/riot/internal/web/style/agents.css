@@ -227,3 +227,93 @@ body {
     padding: 2px 4px;
     width: fit-content;
 }
+
+/* the unbind confirmation modal: a backdrop over the whole page and a centred
+   panel. The global flex rule would override the `hidden` attribute, so display
+   is set explicitly. */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal[hidden] {
+    display: none;
+}
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(37, 37, 37, 0.45);
+}
+
+.modal-panel {
+    position: relative;
+    z-index: 1;
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px;
+    border: 2px solid rgb(37, 37, 37);
+    background: rgb(240, 240, 240);
+    font-family: sans-serif;
+    font-size: 12px;
+    color: rgb(37, 37, 37);
+}
+
+.modal-title {
+    flex: none;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.modal-body {
+    flex: none;
+    display: block;
+    line-height: 1.5;
+}
+
+.modal-actions {
+    flex: none;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+}
+
+.modal-status {
+    flex: 1;
+    min-width: 0;
+    color: rgb(110, 110, 110);
+}
+
+.modal-button {
+    flex: none;
+    border: 1px solid rgb(120, 120, 120);
+    background: rgb(240, 240, 240);
+    padding: 4px 14px;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.modal-button:hover {
+    background: rgb(250, 250, 250);
+}
+
+.modal-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.modal-confirm {
+    border-color: rgb(190, 50, 50);
+    background: rgb(190, 50, 50);
+    color: rgb(255, 255, 255);
+}
+
+.modal-confirm:hover {
+    background: rgb(205, 65, 65);
+}
