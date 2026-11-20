@@ -1,6 +1,6 @@
 module github.com/verikono/glocalize/apps/riot
 
-go 1.27.0
+go 1.27.4
 
 require (
 	github.com/cloudwego/eino v0.9.21

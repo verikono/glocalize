@@ -1,6 +1,6 @@
 module github.com/verikono/glocalize/packages/go/errantly/postgres
 
-go 1.27.0
+go 1.27.4
 
 require (
 	github.com/verikono/glocalize/packages/go/errantly v0.1.0
