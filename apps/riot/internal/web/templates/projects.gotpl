@@ -1,0 +1,9 @@
+<aside id="projects-list" class="projects-list">
+    <input id="projects-search" class="projects-search" type="search" placeholder="search projects" title="prefix with ! to exclude" spellcheck="false" aria-label="search projects" />
+    <div id="projects-items" class="projects-items" aria-label="projects"></div>
+</aside>
+<div id="projects-resizer" class="projects-resizer" role="separator" aria-orientation="vertical" aria-label="resize project list" tabindex="0"></div>
+<section id="projects-main" class="projects-main">
+    <h1 id="project-name" class="project-name"></h1>
+    <div id="project-tree" class="project-tree"></div>
+</section>

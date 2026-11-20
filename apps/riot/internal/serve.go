@@ -27,13 +27,14 @@ type RiotConfig struct {
 
 // RiotServer serves the GraphQL and MCP surfaces over one HTTP port, backed by the phi-generated orm client.
 type RiotServer struct {
-	config RiotConfig
-	db     *orm.DB
-	graph  *gql.RiotGraph
-	mcps   *mcp.RiotMcp
-	ui     *web.RiotWebUi
-	agents *web.RiotWebUi
-	mux    *http.ServeMux
+	config   RiotConfig
+	db       *orm.DB
+	graph    *gql.RiotGraph
+	mcps     *mcp.RiotMcp
+	ui       *web.RiotWebUi
+	agents   *web.RiotWebUi
+	projects *web.RiotWebUi
+	mux      *http.ServeMux
 	T.HotReloadable
 }
 
@@ -98,7 +99,13 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		return nil, err
 	}
 
-	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps, ui: wui, agents: agui}
+	pgui, err := web.NewProjectsWebService()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	inst := &RiotServer{config: config, db: db, graph: graph, mcps: mcps, ui: wui, agents: agui, projects: pgui}
 
 	inst.mux = http.NewServeMux()
 	inst.mux.Handle(config.GqlURL, graph.Handler())
@@ -110,6 +117,9 @@ func NewRiotServer(options ...T.OptionerFn) (*RiotServer, error) {
 		return nil, err
 	}
 	if err := agui.BindDocumentMux(inst.mux); err != nil {
+		return nil, err
+	}
+	if err := pgui.BindDocumentMux(inst.mux); err != nil {
 		return nil, err
 	}
 	if config.Playground != "" {
