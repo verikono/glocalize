@@ -5,8 +5,8 @@ model StyleToken {
   mode ThemeMode
   type StyleType
   token TokenType
-  app App @relation("AppStyleTokens", fields: [app_id], references: [name])
-  app_id String
+  app_language AppLanguage
+  app_name String
   variable String? // this way the style primary.color translates to --color-primary
-  @@id([app_id, mode, token, style])
+  @@id([app_language, app_name, mode, token, style])
 }

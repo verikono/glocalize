@@ -12,6 +12,7 @@ import (
 // Project represents the database model
 type Project struct {
 	Name        string                   `db:"name" json:"name"`
+	Location    string                   `db:"location" json:"location"`
 	SkillsPath  string                   `db:"skillsPath" json:"skillsPath"`
 	AgentsPath  string                   `db:"agentsPath" json:"agentsPath"`
 	Skills      []*ProjectSkill          `json:"skills,omitempty"`
@@ -26,10 +27,12 @@ type Project struct {
 // Fields for Project:
 //
 //	name       string required
+//	location   string required
 //	skillsPath string required
 //	agentsPath string required
 type ProjectCreate struct {
 	Name       string `json:"name"`
+	Location   string `json:"location"`
 	SkillsPath string `json:"skillsPath"`
 	AgentsPath string `json:"agentsPath"`
 }
@@ -40,12 +43,14 @@ func (s *ProjectCreate) colMask() uint64 {
 	mask |= 1 << 0
 	mask |= 1 << 1
 	mask |= 1 << 2
+	mask |= 1 << 3
 	return mask
 }
 
 // ProjectUpdate contains model input fields for Project update operations.
 type ProjectUpdate struct {
 	Name       *string `json:"name"`
+	Location   *string `json:"location"`
 	SkillsPath *string `json:"skillsPath"`
 	AgentsPath *string `json:"agentsPath"`
 }
@@ -56,6 +61,10 @@ func (u *ProjectUpdate) ToColsVals() ([]string, []any) {
 	if u.Name != nil {
 		cols = append(cols, "name")
 		vals = append(vals, u.Name)
+	}
+	if u.Location != nil {
+		cols = append(cols, "location")
+		vals = append(vals, u.Location)
 	}
 	if u.SkillsPath != nil {
 		cols = append(cols, "skillsPath")
@@ -82,6 +91,15 @@ func assignmentsToProjectUpdate(assignments []FieldAssignment) (ProjectUpdate, e
 				input.Name = v
 			} else {
 				errs.Add("name", a.Val, "type", "field name must be of type string")
+			}
+		case "location":
+			if v, ok := a.Val.(string); ok {
+				input.Location = &v
+				errs.ValidateString("location", v, false, 0, false, false)
+			} else if v, ok := a.Val.(*string); ok {
+				input.Location = v
+			} else {
+				errs.Add("location", a.Val, "type", "field location must be of type string")
 			}
 		case "skillsPath":
 			if v, ok := a.Val.(string); ok {
@@ -116,6 +134,7 @@ func assignmentsToProjectUpdate(assignments []FieldAssignment) (ProjectUpdate, e
 //
 //	-- Scalars --
 //	name       (bool)
+//	location   (bool)
 //	skillsPath (bool)
 //	agentsPath (bool)
 //	-- Relations --
@@ -126,6 +145,7 @@ func assignmentsToProjectUpdate(assignments []FieldAssignment) (ProjectUpdate, e
 //	agents     ([]Agent)
 type ProjectSelect struct {
 	Name        bool                             `json:"name"`
+	Location    bool                             `json:"location"`
 	SkillsPath  bool                             `json:"skillsPath"`
 	AgentsPath  bool                             `json:"agentsPath"`
 	Skills      ProjectSkillSelectQuery          `json:"skills,omitempty"`
@@ -137,6 +157,7 @@ type ProjectSelect struct {
 
 var fullProjectSelectVal = &ProjectSelect{
 	Name:       true,
+	Location:   true,
 	SkillsPath: true,
 	AgentsPath: true,
 }
@@ -149,7 +170,7 @@ func (s *ProjectSelect) hasAnyScalar() bool {
 	if s == nil {
 		return false
 	}
-	return s.Name || s.SkillsPath || s.AgentsPath
+	return s.Name || s.Location || s.SkillsPath || s.AgentsPath
 }
 
 func (s *ProjectSelect) hasAnySelected() bool {
@@ -161,6 +182,7 @@ func (s *ProjectSelect) hasAnySelected() bool {
 
 type ProjectOmit struct {
 	Name       bool `json:"name"`
+	Location   bool `json:"location"`
 	SkillsPath bool `json:"skillsPath"`
 	AgentsPath bool `json:"agentsPath"`
 }
@@ -236,6 +258,7 @@ func (b *ProjectQueryBuilder) GetRelationParams() (*ProjectSelect, *ProjectOmit,
 // Fields for Project:
 //
 //	name       string required
+//	location   string required
 //	skillsPath string required
 //	agentsPath string required
 //
@@ -262,6 +285,7 @@ type ProjectCreateArgs struct {
 // Fields for Project:
 //
 //	name       string required
+//	location   string required
 //	skillsPath string required
 //	agentsPath string required
 type ProjectCreateManyArgs struct {
@@ -289,6 +313,7 @@ func (a *ProjectCreateManyArgs) AppendData(builders ...*ProjectCreateBuilder) *P
 // Fields for Project:
 //
 //	name       string required
+//	location   string required
 //	skillsPath string required
 //	agentsPath string required
 //
@@ -557,6 +582,8 @@ func (m *Project) ScanFields(cols []string) []any {
 		switch col {
 		case "name":
 			targets[i] = &m.Name
+		case "location":
+			targets[i] = &m.Location
 		case "skillsPath":
 			targets[i] = &m.SkillsPath
 		case "agentsPath":
@@ -568,6 +595,7 @@ func (m *Project) ScanFields(cols []string) []any {
 
 var projectDefaultCols = []string{
 	"name",
+	"location",
 	"skillsPath",
 	"agentsPath",
 }
@@ -585,10 +613,11 @@ func selectProjectCols(selects *ProjectSelect, omits *ProjectOmit, forceCols ...
 		return projectDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.Name || selects.SkillsPath || selects.AgentsPath || selects.Skills != nil || selects.Generalizes != nil || selects.Specializes != nil || selects.Apps != nil || selects.Agents != nil)
+	anySelected := selects != nil && (selects.Name || selects.Location || selects.SkillsPath || selects.AgentsPath || selects.Skills != nil || selects.Generalizes != nil || selects.Specializes != nil || selects.Apps != nil || selects.Agents != nil)
 
 	specs := []colSpec{
 		{"name", selects != nil && selects.Name, omits != nil && omits.Name, selects != nil && selects.hasAnyRelation()},
+		{"location", selects != nil && selects.Location, omits != nil && omits.Location, false},
 		{"skillsPath", selects != nil && selects.SkillsPath, omits != nil && omits.SkillsPath, false},
 		{"agentsPath", selects != nil && selects.AgentsPath, omits != nil && omits.AgentsPath, false},
 	}
@@ -655,6 +684,10 @@ func (b *ProjectCreateBuilder) SetName(v string) *ProjectCreateBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "name", Val: v})
 	return b
 }
+func (b *ProjectCreateBuilder) SetLocation(v string) *ProjectCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
+	return b
+}
 func (b *ProjectCreateBuilder) SetSkillsPath(v string) *ProjectCreateBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "skillsPath", Val: v})
 	return b
@@ -681,8 +714,9 @@ func (d *ProjectDelegate) Create() *ProjectCreateBuilder {
 
 const (
 	providedProjectName       uint64 = 1 << 0
-	providedProjectSkillsPath uint64 = 1 << 1
-	providedProjectAgentsPath uint64 = 1 << 2
+	providedProjectLocation   uint64 = 1 << 1
+	providedProjectSkillsPath uint64 = 1 << 2
+	providedProjectAgentsPath uint64 = 1 << 3
 )
 
 func assignmentsToProjectCreate(assignments []FieldAssignment) (ProjectCreate, error) {
@@ -699,6 +733,14 @@ func assignmentsToProjectCreate(assignments []FieldAssignment) (ProjectCreate, e
 				errs.ValidateString("name", v, true, 0, false, false)
 			} else {
 				errs.Add("name", a.Val, "type", "field name must be of type string")
+			}
+		case "location":
+			provided |= providedProjectLocation
+			if v, ok := a.Val.(string); ok {
+				input.Location = v
+				errs.ValidateString("location", v, true, 0, false, false)
+			} else {
+				errs.Add("location", a.Val, "type", "field location must be of type string")
 			}
 		case "skillsPath":
 			provided |= providedProjectSkillsPath
@@ -721,6 +763,9 @@ func assignmentsToProjectCreate(assignments []FieldAssignment) (ProjectCreate, e
 	if provided&providedProjectName == 0 {
 		errs.Add("name", "", "required", "field Name is required")
 	}
+	if provided&providedProjectLocation == 0 {
+		errs.Add("location", "", "required", "field Location is required")
+	}
 	if provided&providedProjectSkillsPath == 0 {
 		errs.Add("skillsPath", "", "required", "field SkillsPath is required")
 	}
@@ -735,14 +780,16 @@ func assignmentsToProjectCreate(assignments []FieldAssignment) (ProjectCreate, e
 }
 
 func (s *ProjectCreate) ToColsVals() (cols []string, vals []any) {
-	cols = make([]string, 0, 3)
-	vals = make([]any, 0, 3)
+	cols = make([]string, 0, 4)
+	vals = make([]any, 0, 4)
 	cols = append(cols, "name")
 	if s.Name != "" {
 		vals = append(vals, s.Name)
 	} else {
 		vals = append(vals, generateCUID())
 	}
+	cols = append(cols, "location")
+	vals = append(vals, s.Location)
 	cols = append(cols, "skillsPath")
 	vals = append(vals, s.SkillsPath)
 	cols = append(cols, "agentsPath")
@@ -1132,7 +1179,7 @@ func (d *ProjectDelegate) buildBulkInsertSQL(q *Queries, batch []*ProjectCreate,
 		colMask |= input.colMask()
 	}
 
-	cols = make([]string, 0, 3)
+	cols = make([]string, 0, 4)
 	for i, c := range projectDefaultCols {
 		if colMask&(1<<i) != 0 {
 			cols = append(cols, c)
@@ -1171,6 +1218,8 @@ func (d *ProjectDelegate) buildBulkInsertSQL(q *Queries, batch []*ProjectCreate,
 				} else {
 					vals = append(vals, generateCUID())
 				}
+			case "location":
+				vals = append(vals, input.Location)
 			case "skillsPath":
 				vals = append(vals, input.SkillsPath)
 			case "agentsPath":
@@ -1425,6 +1474,7 @@ func ProjectConflictUpdate(fn func(u *ProjectUpsert)) *ConflictAction {
 
 type ProjectUpsert struct {
 	Name       fieldUpsert[string]
+	Location   fieldUpsert[string]
 	SkillsPath fieldUpsert[string]
 	AgentsPath fieldUpsert[string]
 }
@@ -1432,6 +1482,7 @@ type ProjectUpsert struct {
 func newProjectUpsert(up *ConflictUpdate) *ProjectUpsert {
 	return &ProjectUpsert{
 		Name:       fieldUpsert[string]{column: "name", update: up},
+		Location:   fieldUpsert[string]{column: "location", update: up},
 		SkillsPath: fieldUpsert[string]{column: "skillsPath", update: up},
 		AgentsPath: fieldUpsert[string]{column: "agentsPath", update: up},
 	}
@@ -1461,6 +1512,20 @@ func (b *ProjectUpdateManyBuilder) SetName(v string) *ProjectUpdateManyBuilder {
 
 func (b *ProjectUpdateManyAndReturnBuilder) SetName(v string) *ProjectUpdateManyAndReturnBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "name", Val: v})
+	return b
+}
+func (b *ProjectUpdateBuilder) SetLocation(v string) *ProjectUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
+	return b
+}
+
+func (b *ProjectUpdateManyBuilder) SetLocation(v string) *ProjectUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
+	return b
+}
+
+func (b *ProjectUpdateManyAndReturnBuilder) SetLocation(v string) *ProjectUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
 	return b
 }
 func (b *ProjectUpdateBuilder) SetSkillsPath(v string) *ProjectUpdateBuilder {

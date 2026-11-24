@@ -4,6 +4,11 @@ use (
 	./apps/glo
 	./apps/riot
 	./packages/go/data/prisma
+	./packages/go/errantly
+	./packages/go/errantly/postgres
+	./packages/go/journal
+	./packages/go/journal/mqtt
+	./packages/go/lang
 	./packages/go/puck
 	./packages/go/tracer
 	./packages/go/utils

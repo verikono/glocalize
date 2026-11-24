@@ -11,22 +11,29 @@ import (
 
 // App represents the database model
 type App struct {
-	Name       string        `db:"name" json:"name"`
-	Project_id string        `db:"project_id" json:"project_id"`
-	Project    *Project      `json:"project,omitempty"`
-	Styles     []*StyleToken `json:"styles,omitempty"`
-	Skills     []*AppSkill   `json:"skills,omitempty"`
+	Type       AppTypeType     `db:"type" json:"type"`
+	Language   AppLanguageType `db:"language" json:"language"`
+	Name       string          `db:"name" json:"name"`
+	Location   string          `db:"location" json:"location"`
+	Project_id string          `db:"project_id" json:"project_id"`
+	Project    *Project        `json:"project,omitempty"`
 }
 
 // AppCreate contains model input fields for App creation operations.
 //
 // Fields for App:
 //
-//	name       string required
-//	project_id string required
+//	type       AppType     required
+//	language   AppLanguage required
+//	name       string      required
+//	location   string      required
+//	project_id string      required
 type AppCreate struct {
-	Name       string `json:"name"`
-	Project_id string `json:"project_id"`
+	Type       AppTypeType     `json:"type"`
+	Language   AppLanguageType `json:"language"`
+	Name       string          `json:"name"`
+	Location   string          `json:"location"`
+	Project_id string          `json:"project_id"`
 }
 
 // colMask returns a bit mask of columns that are set
@@ -34,21 +41,39 @@ func (s *AppCreate) colMask() uint64 {
 	var mask uint64
 	mask |= 1 << 0
 	mask |= 1 << 1
+	mask |= 1 << 2
+	mask |= 1 << 3
+	mask |= 1 << 4
 	return mask
 }
 
 // AppUpdate contains model input fields for App update operations.
 type AppUpdate struct {
-	Name       *string `json:"name"`
-	Project_id *string `json:"project_id"`
+	Type       *AppTypeType     `json:"type"`
+	Language   *AppLanguageType `json:"language"`
+	Name       *string          `json:"name"`
+	Location   *string          `json:"location"`
+	Project_id *string          `json:"project_id"`
 }
 
 func (u *AppUpdate) ToColsVals() ([]string, []any) {
 	var cols []string
 	var vals []any
+	if u.Type != nil {
+		cols = append(cols, "type")
+		vals = append(vals, u.Type)
+	}
+	if u.Language != nil {
+		cols = append(cols, "language")
+		vals = append(vals, u.Language)
+	}
 	if u.Name != nil {
 		cols = append(cols, "name")
 		vals = append(vals, u.Name)
+	}
+	if u.Location != nil {
+		cols = append(cols, "location")
+		vals = append(vals, u.Location)
 	}
 	if u.Project_id != nil {
 		cols = append(cols, "project_id")
@@ -63,6 +88,34 @@ func assignmentsToAppUpdate(assignments []FieldAssignment) (AppUpdate, error) {
 
 	for _, a := range assignments {
 		switch a.Col {
+		case "type":
+			if v, ok := a.Val.(AppTypeType); ok {
+				input.Type = &v
+				if !v.IsValid() {
+					errs.Add("type", v, "enum", fmt.Sprintf("invalid enum value %q for field type", v))
+				}
+			} else if v, ok := a.Val.(*AppTypeType); ok {
+				input.Type = v
+				if v != nil && !v.IsValid() {
+					errs.Add("type", *v, "enum", fmt.Sprintf("invalid enum value %q for field type", *v))
+				}
+			} else {
+				errs.Add("type", a.Val, "type", "field type must be of type AppTypeType")
+			}
+		case "language":
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.Language = &v
+				if !v.IsValid() {
+					errs.Add("language", v, "enum", fmt.Sprintf("invalid enum value %q for field language", v))
+				}
+			} else if v, ok := a.Val.(*AppLanguageType); ok {
+				input.Language = v
+				if v != nil && !v.IsValid() {
+					errs.Add("language", *v, "enum", fmt.Sprintf("invalid enum value %q for field language", *v))
+				}
+			} else {
+				errs.Add("language", a.Val, "type", "field language must be of type AppLanguageType")
+			}
 		case "name":
 			if v, ok := a.Val.(string); ok {
 				input.Name = &v
@@ -71,6 +124,15 @@ func assignmentsToAppUpdate(assignments []FieldAssignment) (AppUpdate, error) {
 				input.Name = v
 			} else {
 				errs.Add("name", a.Val, "type", "field name must be of type string")
+			}
+		case "location":
+			if v, ok := a.Val.(string); ok {
+				input.Location = &v
+				errs.ValidateString("location", v, false, 0, false, false)
+			} else if v, ok := a.Val.(*string); ok {
+				input.Location = v
+			} else {
+				errs.Add("location", a.Val, "type", "field location must be of type string")
 			}
 		case "project_id":
 			if v, ok := a.Val.(string); ok {
@@ -95,22 +157,27 @@ func assignmentsToAppUpdate(assignments []FieldAssignment) (AppUpdate, error) {
 // Selectable fields:
 //
 //	-- Scalars --
+//	type       (bool)
+//	language   (bool)
 //	name       (bool)
+//	location   (bool)
 //	project_id (bool)
 //	-- Relations --
 //	project    (Project)
-//	styles     ([]StyleToken)
-//	skills     ([]AppSkill)
 type AppSelect struct {
-	Name       bool                  `json:"name"`
-	Project_id bool                  `json:"project_id"`
-	Project    *ProjectSelect        `json:"project,omitempty"`
-	Styles     StyleTokenSelectQuery `json:"styles,omitempty"`
-	Skills     AppSkillSelectQuery   `json:"skills,omitempty"`
+	Type       bool           `json:"type"`
+	Language   bool           `json:"language"`
+	Name       bool           `json:"name"`
+	Location   bool           `json:"location"`
+	Project_id bool           `json:"project_id"`
+	Project    *ProjectSelect `json:"project,omitempty"`
 }
 
 var fullAppSelectVal = &AppSelect{
+	Type:       true,
+	Language:   true,
 	Name:       true,
+	Location:   true,
 	Project_id: true,
 }
 
@@ -122,7 +189,7 @@ func (s *AppSelect) hasAnyScalar() bool {
 	if s == nil {
 		return false
 	}
-	return s.Name || s.Project_id
+	return s.Type || s.Language || s.Name || s.Location || s.Project_id
 }
 
 func (s *AppSelect) hasAnySelected() bool {
@@ -133,7 +200,10 @@ func (s *AppSelect) hasAnySelected() bool {
 }
 
 type AppOmit struct {
+	Type       bool `json:"type"`
+	Language   bool `json:"language"`
 	Name       bool `json:"name"`
+	Location   bool `json:"location"`
 	Project_id bool `json:"project_id"`
 }
 
@@ -207,14 +277,15 @@ func (b *AppQueryBuilder) GetRelationParams() (*AppSelect, *AppOmit, QueryParams
 //
 // Fields for App:
 //
-//	name       string required
-//	project_id string required
+//	type       AppType     required
+//	language   AppLanguage required
+//	name       string      required
+//	location   string      required
+//	project_id string      required
 //
 // Relations for App:
 //
 //	project    (Project)
-//	styles     ([]StyleToken)
-//	skills     ([]AppSkill)
 type AppCreateArgs struct {
 	// Data contains the model fields to insert.
 	Data *AppCreate
@@ -230,8 +301,11 @@ type AppCreateArgs struct {
 //
 // Fields for App:
 //
-//	name       string required
-//	project_id string required
+//	type       AppType     required
+//	language   AppLanguage required
+//	name       string      required
+//	location   string      required
+//	project_id string      required
 type AppCreateManyArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*AppCreate
@@ -256,14 +330,15 @@ func (a *AppCreateManyArgs) AppendData(builders ...*AppCreateBuilder) *AppCreate
 //
 // Fields for App:
 //
-//	name       string required
-//	project_id string required
+//	type       AppType     required
+//	language   AppLanguage required
+//	name       string      required
+//	location   string      required
+//	project_id string      required
 //
 // Relations for App:
 //
 //	project    (Project)
-//	styles     ([]StyleToken)
-//	skills     ([]AppSkill)
 type AppCreateManyAndReturnArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*AppCreate
@@ -520,8 +595,14 @@ func (m *App) ScanFields(cols []string) []any {
 	targets := make([]any, len(cols))
 	for i, col := range cols {
 		switch col {
+		case "type":
+			targets[i] = &m.Type
+		case "language":
+			targets[i] = &m.Language
 		case "name":
 			targets[i] = &m.Name
+		case "location":
+			targets[i] = &m.Location
 		case "project_id":
 			targets[i] = &m.Project_id
 		}
@@ -530,27 +611,32 @@ func (m *App) ScanFields(cols []string) []any {
 }
 
 var appDefaultCols = []string{
+	"type",
+	"language",
 	"name",
+	"location",
 	"project_id",
 }
 
 var appPKCols = []string{
+	"language",
 	"name",
 }
 
-var appUniqueCols = []string{
-	"name",
-}
+var appUniqueCols = []string{}
 
 func selectAppCols(selects *AppSelect, omits *AppOmit, forceCols ...string) []string {
 	if selects == nil && omits == nil && len(forceCols) == 0 {
 		return appDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.Name || selects.Project_id || selects.Project != nil || selects.Styles != nil || selects.Skills != nil)
+	anySelected := selects != nil && (selects.Type || selects.Language || selects.Name || selects.Location || selects.Project_id || selects.Project != nil)
 
 	specs := []colSpec{
-		{"name", selects != nil && selects.Name, omits != nil && omits.Name, selects != nil && selects.hasAnyRelation()},
+		{"type", selects != nil && selects.Type, omits != nil && omits.Type, false},
+		{"language", selects != nil && selects.Language, omits != nil && omits.Language, false},
+		{"name", selects != nil && selects.Name, omits != nil && omits.Name, false},
+		{"location", selects != nil && selects.Location, omits != nil && omits.Location, false},
 		{"project_id", selects != nil && selects.Project_id, omits != nil && omits.Project_id, selects != nil && selects.Project != nil},
 	}
 
@@ -569,7 +655,7 @@ func (s *AppSelect) hasAnyRelation() bool {
 	if s == nil {
 		return false
 	}
-	return s.Project != nil || s.Styles != nil || s.Skills != nil
+	return s.Project != nil
 }
 
 type AppUpsertBuilder struct {
@@ -612,8 +698,20 @@ func (b *AppCreateBuilder) OnConflict(target UniqueConstraintTarget) *AppConflic
 	}
 }
 
+func (b *AppCreateBuilder) SetType(v AppTypeType) *AppCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "type", Val: v})
+	return b
+}
+func (b *AppCreateBuilder) SetLanguage(v AppLanguageType) *AppCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "language", Val: v})
+	return b
+}
 func (b *AppCreateBuilder) SetName(v string) *AppCreateBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "name", Val: v})
+	return b
+}
+func (b *AppCreateBuilder) SetLocation(v string) *AppCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
 	return b
 }
 func (b *AppCreateBuilder) SetProject_id(v string) *AppCreateBuilder {
@@ -637,8 +735,11 @@ func (d *AppDelegate) Create() *AppCreateBuilder {
 }
 
 const (
-	providedAppName       uint64 = 1 << 0
-	providedAppProject_id uint64 = 1 << 1
+	providedAppType       uint64 = 1 << 0
+	providedAppLanguage   uint64 = 1 << 1
+	providedAppName       uint64 = 1 << 2
+	providedAppLocation   uint64 = 1 << 3
+	providedAppProject_id uint64 = 1 << 4
 )
 
 func assignmentsToAppCreate(assignments []FieldAssignment) (AppCreate, error) {
@@ -648,6 +749,26 @@ func assignmentsToAppCreate(assignments []FieldAssignment) (AppCreate, error) {
 
 	for _, a := range assignments {
 		switch a.Col {
+		case "type":
+			provided |= providedAppType
+			if v, ok := a.Val.(AppTypeType); ok {
+				input.Type = v
+				if !v.IsValid() {
+					errs.Add("type", v, "enum", fmt.Sprintf("invalid enum value %q for field type", v))
+				}
+			} else {
+				errs.Add("type", a.Val, "type", "field type must be of type AppTypeType")
+			}
+		case "language":
+			provided |= providedAppLanguage
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.Language = v
+				if !v.IsValid() {
+					errs.Add("language", v, "enum", fmt.Sprintf("invalid enum value %q for field language", v))
+				}
+			} else {
+				errs.Add("language", a.Val, "type", "field language must be of type AppLanguageType")
+			}
 		case "name":
 			provided |= providedAppName
 			if v, ok := a.Val.(string); ok {
@@ -655,6 +776,14 @@ func assignmentsToAppCreate(assignments []FieldAssignment) (AppCreate, error) {
 				errs.ValidateString("name", v, true, 0, false, false)
 			} else {
 				errs.Add("name", a.Val, "type", "field name must be of type string")
+			}
+		case "location":
+			provided |= providedAppLocation
+			if v, ok := a.Val.(string); ok {
+				input.Location = v
+				errs.ValidateString("location", v, true, 0, false, false)
+			} else {
+				errs.Add("location", a.Val, "type", "field location must be of type string")
 			}
 		case "project_id":
 			provided |= providedAppProject_id
@@ -666,8 +795,17 @@ func assignmentsToAppCreate(assignments []FieldAssignment) (AppCreate, error) {
 			}
 		}
 	}
+	if provided&providedAppType == 0 {
+		errs.Add("type", nil, "required", "field Type is required")
+	}
+	if provided&providedAppLanguage == 0 {
+		errs.Add("language", nil, "required", "field Language is required")
+	}
 	if provided&providedAppName == 0 {
 		errs.Add("name", "", "required", "field Name is required")
+	}
+	if provided&providedAppLocation == 0 {
+		errs.Add("location", "", "required", "field Location is required")
 	}
 	if provided&providedAppProject_id == 0 {
 		errs.Add("project_id", "", "required", "field Project_id is required")
@@ -680,14 +818,16 @@ func assignmentsToAppCreate(assignments []FieldAssignment) (AppCreate, error) {
 }
 
 func (s *AppCreate) ToColsVals() (cols []string, vals []any) {
-	cols = make([]string, 0, 2)
-	vals = make([]any, 0, 2)
+	cols = make([]string, 0, 5)
+	vals = make([]any, 0, 5)
+	cols = append(cols, "type")
+	vals = append(vals, s.Type)
+	cols = append(cols, "language")
+	vals = append(vals, s.Language)
 	cols = append(cols, "name")
-	if s.Name != "" {
-		vals = append(vals, s.Name)
-	} else {
-		vals = append(vals, generateCUID())
-	}
+	vals = append(vals, s.Name)
+	cols = append(cols, "location")
+	vals = append(vals, s.Location)
 	cols = append(cols, "project_id")
 	vals = append(vals, s.Project_id)
 	return
@@ -1075,7 +1215,7 @@ func (d *AppDelegate) buildBulkInsertSQL(q *Queries, batch []*AppCreate, paramSt
 		colMask |= input.colMask()
 	}
 
-	cols = make([]string, 0, 2)
+	cols = make([]string, 0, 5)
 	for i, c := range appDefaultCols {
 		if colMask&(1<<i) != 0 {
 			cols = append(cols, c)
@@ -1108,12 +1248,14 @@ func (d *AppDelegate) buildBulkInsertSQL(q *Queries, batch []*AppCreate, paramSt
 			}
 			writeDefault := false
 			switch col {
+			case "type":
+				vals = append(vals, input.Type)
+			case "language":
+				vals = append(vals, input.Language)
 			case "name":
-				if input.Name != "" {
-					vals = append(vals, input.Name)
-				} else {
-					vals = append(vals, generateCUID())
-				}
+				vals = append(vals, input.Name)
+			case "location":
+				vals = append(vals, input.Location)
 			case "project_id":
 				vals = append(vals, input.Project_id)
 			}
@@ -1365,13 +1507,19 @@ func AppConflictUpdate(fn func(u *AppUpsert)) *ConflictAction {
 }
 
 type AppUpsert struct {
+	Type       fieldUpsert[AppTypeType]
+	Language   fieldUpsert[AppLanguageType]
 	Name       fieldUpsert[string]
+	Location   fieldUpsert[string]
 	Project_id fieldUpsert[string]
 }
 
 func newAppUpsert(up *ConflictUpdate) *AppUpsert {
 	return &AppUpsert{
+		Type:       fieldUpsert[AppTypeType]{column: "type", update: up},
+		Language:   fieldUpsert[AppLanguageType]{column: "language", update: up},
 		Name:       fieldUpsert[string]{column: "name", update: up},
+		Location:   fieldUpsert[string]{column: "location", update: up},
 		Project_id: fieldUpsert[string]{column: "project_id", update: up},
 	}
 }
@@ -1388,6 +1536,34 @@ type AppUpdateManyAndReturnBuilder struct {
 	*UpdateManyAndReturnBuilder[App, AppSelect, AppOmit]
 }
 
+func (b *AppUpdateBuilder) SetType(v AppTypeType) *AppUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "type", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyBuilder) SetType(v AppTypeType) *AppUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "type", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyAndReturnBuilder) SetType(v AppTypeType) *AppUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "type", Val: v})
+	return b
+}
+func (b *AppUpdateBuilder) SetLanguage(v AppLanguageType) *AppUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "language", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyBuilder) SetLanguage(v AppLanguageType) *AppUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "language", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyAndReturnBuilder) SetLanguage(v AppLanguageType) *AppUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "language", Val: v})
+	return b
+}
 func (b *AppUpdateBuilder) SetName(v string) *AppUpdateBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "name", Val: v})
 	return b
@@ -1400,6 +1576,20 @@ func (b *AppUpdateManyBuilder) SetName(v string) *AppUpdateManyBuilder {
 
 func (b *AppUpdateManyAndReturnBuilder) SetName(v string) *AppUpdateManyAndReturnBuilder {
 	b.assignments = append(b.assignments, FieldAssignment{Col: "name", Val: v})
+	return b
+}
+func (b *AppUpdateBuilder) SetLocation(v string) *AppUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyBuilder) SetLocation(v string) *AppUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
+	return b
+}
+
+func (b *AppUpdateManyAndReturnBuilder) SetLocation(v string) *AppUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "location", Val: v})
 	return b
 }
 func (b *AppUpdateBuilder) SetProject_id(v string) *AppUpdateBuilder {
@@ -2277,6 +2467,13 @@ func (d *AppDelegate) runDelete(ctx context.Context, where []PredicateOf[App], s
 			var pkPreds []PredicateOf[App]
 			pkPreds = append(pkPreds, Predicate[App]{
 				Data: PredicateData{
+					Column:   "language",
+					Operator: "=",
+					Value:    res.Language,
+				},
+			})
+			pkPreds = append(pkPreds, Predicate[App]{
+				Data: PredicateData{
 					Column:   "name",
 					Operator: "=",
 					Value:    res.Name,
@@ -2455,50 +2652,6 @@ func (d *AppDelegate) loadRelations(ctx context.Context, records []*App, selects
 			return fmt.Errorf("loading project: %w", err)
 		}
 		if err := d.client.Project.loadRelations(ctx, allChildren, relationSelects); err != nil {
-			return err
-		}
-	}
-	if selects.Styles != nil {
-		relationSelects, relationOmits, relationParams := selects.Styles.GetRelationParams()
-		returningCols := selectStyleTokenCols(relationSelects, relationOmits, "app_id")
-		// Inverse holds the FK: StyleToken.app_id
-		allChildren, err := loadRelation(
-			ctx, d.client, records,
-			directKey(func(p *App) string { return p.Name }),
-			"StyleToken",
-			"app_id",
-			returningCols,
-			scanInto(returningCols, (*StyleToken).ScanFields),
-			directKey(func(c *StyleToken) string { return c.App_id }),
-			appendMany(func(p *App) *[]*StyleToken { return &p.Styles }),
-			relationParams,
-		)
-		if err != nil {
-			return fmt.Errorf("loading styles: %w", err)
-		}
-		if err := d.client.StyleToken.loadRelations(ctx, allChildren, relationSelects); err != nil {
-			return err
-		}
-	}
-	if selects.Skills != nil {
-		relationSelects, relationOmits, relationParams := selects.Skills.GetRelationParams()
-		returningCols := selectAppSkillCols(relationSelects, relationOmits, "app_id")
-		// Inverse holds the FK: AppSkill.app_id
-		allChildren, err := loadRelation(
-			ctx, d.client, records,
-			directKey(func(p *App) string { return p.Name }),
-			"AppSkill",
-			"app_id",
-			returningCols,
-			scanInto(returningCols, (*AppSkill).ScanFields),
-			directKey(func(c *AppSkill) string { return c.App_id }),
-			appendMany(func(p *App) *[]*AppSkill { return &p.Skills }),
-			relationParams,
-		)
-		if err != nil {
-			return fmt.Errorf("loading skills: %w", err)
-		}
-		if err := d.client.AppSkill.loadRelations(ctx, allChildren, relationSelects); err != nil {
 			return err
 		}
 	}

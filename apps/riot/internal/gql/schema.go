@@ -143,9 +143,13 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 	appType := graphql.NewObject(graphql.ObjectConfig{
 		Name: "App",
 		Fields: graphql.Fields{
+			"type":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"language":  &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"name":      &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"location":  &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"projectId": &graphql.Field{Type: graphql.String},
 			"skills":    &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.appSkills},
+			"agents":    &graphql.Field{Type: graphql.NewList(agentType), Resolve: r.appAgents},
 			"styles":    &graphql.Field{Type: graphql.NewList(styleTokenType), Resolve: r.appStyles},
 		},
 	})
@@ -164,6 +168,7 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 		Name: "Project",
 		Fields: graphql.Fields{
 			"name":       &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
+			"location":   &graphql.Field{Type: graphql.NewNonNull(graphql.String)},
 			"skillsPath": &graphql.Field{Type: graphql.String},
 			"agentsPath": &graphql.Field{Type: graphql.String},
 			"skills":     &graphql.Field{Type: graphql.NewList(skillType), Resolve: r.projectSkills},
@@ -222,7 +227,8 @@ func buildSchema(db *orm.DB) (graphql.Schema, error) {
 			"App": &graphql.Field{
 				Type: appType,
 				Args: graphql.FieldConfigArgument{
-					"name": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"name":     &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.String)},
+					"language": &graphql.ArgumentConfig{Type: graphql.String},
 				},
 				Resolve: r.app,
 			},
@@ -394,7 +400,11 @@ func (r *resolver) agents(p graphql.ResolveParams) (interface{}, error) {
 }
 
 func (r *resolver) app(p graphql.ResolveParams) (interface{}, error) {
-	return r.db.App.FindFirst(eq[orm.App, string]("name", p.Args["name"].(string))).Exec(r.ctx(p))
+	preds := []orm.PredicateOf[orm.App]{eq[orm.App, string]("name", p.Args["name"].(string))}
+	if language, ok := p.Args["language"].(string); ok && language != "" {
+		preds = append(preds, eq[orm.App, string]("language", language))
+	}
+	return r.db.App.FindFirst(preds...).Exec(r.ctx(p))
 }
 
 func (r *resolver) apps(p graphql.ResolveParams) (interface{}, error) {
@@ -825,7 +835,10 @@ func (r *resolver) appSkills(p graphql.ResolveParams) (interface{}, error) {
 	if !ok || app == nil {
 		return []*orm.Skill{}, nil
 	}
-	rows, err := r.db.AppSkill.FindMany(eq[orm.AppSkill, string]("app_id", app.Name)).Exec(r.ctx(p))
+	rows, err := r.db.AppSkill.FindMany(
+		eq[orm.AppSkill, string]("app_language", string(app.Language)),
+		eq[orm.AppSkill, string]("app_name", app.Name),
+	).Exec(r.ctx(p))
 	if err != nil {
 		return nil, err
 	}
@@ -836,12 +849,34 @@ func (r *resolver) appSkills(p graphql.ResolveParams) (interface{}, error) {
 	return r.skillsByIDs(p, ids)
 }
 
+func (r *resolver) appAgents(p graphql.ResolveParams) (interface{}, error) {
+	app, ok := p.Source.(*orm.App)
+	if !ok || app == nil {
+		return []*orm.Agent{}, nil
+	}
+	rows, err := r.db.AppAgent.FindMany(
+		eq[orm.AppAgent, string]("app_language", string(app.Language)),
+		eq[orm.AppAgent, string]("app_name", app.Name),
+	).Exec(r.ctx(p))
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.AgentId)
+	}
+	return r.agentsByIDs(p, ids)
+}
+
 func (r *resolver) appStyles(p graphql.ResolveParams) (interface{}, error) {
 	app, ok := p.Source.(*orm.App)
 	if !ok || app == nil {
 		return []*orm.StyleToken{}, nil
 	}
-	return r.db.StyleToken.FindMany(eq[orm.StyleToken, string]("app_id", app.Name)).Exec(r.ctx(p))
+	return r.db.StyleToken.FindMany(
+		eq[orm.StyleToken, string]("app_language", string(app.Language)),
+		eq[orm.StyleToken, string]("app_name", app.Name),
+	).Exec(r.ctx(p))
 }
 
 // agentSkills returns the agent's binding rows, so each skill arrives with the

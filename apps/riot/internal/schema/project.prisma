@@ -1,6 +1,7 @@
 
 model Project {
   name       String @id @unique
+  location   String /// absolute path to the repo root; "N/A" when there is no checkout
   skillsPath String
   agentsPath String
 
@@ -15,6 +16,7 @@ model Project {
 /*
 seed Project
 - name: all
+  location: N/A
   skillsPath: ~/.agents/skills/
   agentsPath: ~/.agents/agents/
   skills:

@@ -11,24 +11,26 @@ import (
 
 // AppSkill represents the database model
 type AppSkill struct {
-	App_id   string       `db:"app_id" json:"app_id"`
-	SkillId  string       `db:"skillId" json:"skillId"`
-	Priority PriorityType `db:"priority" json:"priority"`
-	App      *App         `json:"app,omitempty"`
-	Skill    *Skill       `json:"skill,omitempty"`
+	App_language AppLanguageType `db:"app_language" json:"app_language"`
+	App_name     string          `db:"app_name" json:"app_name"`
+	SkillId      string          `db:"skillId" json:"skillId"`
+	Priority     PriorityType    `db:"priority" json:"priority"`
+	Skill        *Skill          `json:"skill,omitempty"`
 }
 
 // AppSkillCreate contains model input fields for AppSkill creation operations.
 //
 // Fields for AppSkill:
 //
-//	app_id   string   required
-//	skillId  string   required
-//	priority Priority default: NORMAL
+//	app_language AppLanguage required
+//	app_name     string      required
+//	skillId      string      required
+//	priority     Priority    default: NORMAL
 type AppSkillCreate struct {
-	App_id   string        `json:"app_id"`
-	SkillId  string        `json:"skillId"`
-	Priority *PriorityType `json:"priority"`
+	App_language AppLanguageType `json:"app_language"`
+	App_name     string          `json:"app_name"`
+	SkillId      string          `json:"skillId"`
+	Priority     *PriorityType   `json:"priority"`
 }
 
 // colMask returns a bit mask of columns that are set
@@ -36,25 +38,31 @@ func (s *AppSkillCreate) colMask() uint64 {
 	var mask uint64
 	mask |= 1 << 0
 	mask |= 1 << 1
+	mask |= 1 << 2
 	if s.Priority != nil {
-		mask |= 1 << 2
+		mask |= 1 << 3
 	}
 	return mask
 }
 
 // AppSkillUpdate contains model input fields for AppSkill update operations.
 type AppSkillUpdate struct {
-	App_id   *string       `json:"app_id"`
-	SkillId  *string       `json:"skillId"`
-	Priority *PriorityType `json:"priority"`
+	App_language *AppLanguageType `json:"app_language"`
+	App_name     *string          `json:"app_name"`
+	SkillId      *string          `json:"skillId"`
+	Priority     *PriorityType    `json:"priority"`
 }
 
 func (u *AppSkillUpdate) ToColsVals() ([]string, []any) {
 	var cols []string
 	var vals []any
-	if u.App_id != nil {
-		cols = append(cols, "app_id")
-		vals = append(vals, u.App_id)
+	if u.App_language != nil {
+		cols = append(cols, "app_language")
+		vals = append(vals, u.App_language)
+	}
+	if u.App_name != nil {
+		cols = append(cols, "app_name")
+		vals = append(vals, u.App_name)
 	}
 	if u.SkillId != nil {
 		cols = append(cols, "skillId")
@@ -73,14 +81,28 @@ func assignmentsToAppSkillUpdate(assignments []FieldAssignment) (AppSkillUpdate,
 
 	for _, a := range assignments {
 		switch a.Col {
-		case "app_id":
-			if v, ok := a.Val.(string); ok {
-				input.App_id = &v
-				errs.ValidateString("app_id", v, false, 0, false, false)
-			} else if v, ok := a.Val.(*string); ok {
-				input.App_id = v
+		case "app_language":
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.App_language = &v
+				if !v.IsValid() {
+					errs.Add("app_language", v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", v))
+				}
+			} else if v, ok := a.Val.(*AppLanguageType); ok {
+				input.App_language = v
+				if v != nil && !v.IsValid() {
+					errs.Add("app_language", *v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", *v))
+				}
 			} else {
-				errs.Add("app_id", a.Val, "type", "field app_id must be of type string")
+				errs.Add("app_language", a.Val, "type", "field app_language must be of type AppLanguageType")
+			}
+		case "app_name":
+			if v, ok := a.Val.(string); ok {
+				input.App_name = &v
+				errs.ValidateString("app_name", v, false, 0, false, false)
+			} else if v, ok := a.Val.(*string); ok {
+				input.App_name = v
+			} else {
+				errs.Add("app_name", a.Val, "type", "field app_name must be of type string")
 			}
 		case "skillId":
 			if v, ok := a.Val.(string); ok {
@@ -119,24 +141,25 @@ func assignmentsToAppSkillUpdate(assignments []FieldAssignment) (AppSkillUpdate,
 // Selectable fields:
 //
 //	-- Scalars --
-//	app_id   (bool)
-//	skillId  (bool)
-//	priority (bool)
+//	app_language (bool)
+//	app_name     (bool)
+//	skillId      (bool)
+//	priority     (bool)
 //	-- Relations --
-//	app      (App)
-//	skill    (Skill)
+//	skill        (Skill)
 type AppSkillSelect struct {
-	App_id   bool         `json:"app_id"`
-	SkillId  bool         `json:"skillId"`
-	Priority bool         `json:"priority"`
-	App      *AppSelect   `json:"app,omitempty"`
-	Skill    *SkillSelect `json:"skill,omitempty"`
+	App_language bool         `json:"app_language"`
+	App_name     bool         `json:"app_name"`
+	SkillId      bool         `json:"skillId"`
+	Priority     bool         `json:"priority"`
+	Skill        *SkillSelect `json:"skill,omitempty"`
 }
 
 var fullAppSkillSelectVal = &AppSkillSelect{
-	App_id:   true,
-	SkillId:  true,
-	Priority: true,
+	App_language: true,
+	App_name:     true,
+	SkillId:      true,
+	Priority:     true,
 }
 
 func fullAppSkillSelect() *AppSkillSelect {
@@ -147,7 +170,7 @@ func (s *AppSkillSelect) hasAnyScalar() bool {
 	if s == nil {
 		return false
 	}
-	return s.App_id || s.SkillId || s.Priority
+	return s.App_language || s.App_name || s.SkillId || s.Priority
 }
 
 func (s *AppSkillSelect) hasAnySelected() bool {
@@ -158,9 +181,10 @@ func (s *AppSkillSelect) hasAnySelected() bool {
 }
 
 type AppSkillOmit struct {
-	App_id   bool `json:"app_id"`
-	SkillId  bool `json:"skillId"`
-	Priority bool `json:"priority"`
+	App_language bool `json:"app_language"`
+	App_name     bool `json:"app_name"`
+	SkillId      bool `json:"skillId"`
+	Priority     bool `json:"priority"`
 }
 
 type AppSkillSelectQuery interface {
@@ -233,14 +257,14 @@ func (b *AppSkillQueryBuilder) GetRelationParams() (*AppSkillSelect, *AppSkillOm
 //
 // Fields for AppSkill:
 //
-//	app_id   string   required
-//	skillId  string   required
-//	priority Priority default: NORMAL
+//	app_language AppLanguage required
+//	app_name     string      required
+//	skillId      string      required
+//	priority     Priority    default: NORMAL
 //
 // Relations for AppSkill:
 //
-//	app      (App)
-//	skill    (Skill)
+//	skill        (Skill)
 type AppSkillCreateArgs struct {
 	// Data contains the model fields to insert.
 	Data *AppSkillCreate
@@ -256,9 +280,10 @@ type AppSkillCreateArgs struct {
 //
 // Fields for AppSkill:
 //
-//	app_id   string   required
-//	skillId  string   required
-//	priority Priority default: NORMAL
+//	app_language AppLanguage required
+//	app_name     string      required
+//	skillId      string      required
+//	priority     Priority    default: NORMAL
 type AppSkillCreateManyArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*AppSkillCreate
@@ -283,14 +308,14 @@ func (a *AppSkillCreateManyArgs) AppendData(builders ...*AppSkillCreateBuilder) 
 //
 // Fields for AppSkill:
 //
-//	app_id   string   required
-//	skillId  string   required
-//	priority Priority default: NORMAL
+//	app_language AppLanguage required
+//	app_name     string      required
+//	skillId      string      required
+//	priority     Priority    default: NORMAL
 //
 // Relations for AppSkill:
 //
-//	app      (App)
-//	skill    (Skill)
+//	skill        (Skill)
 type AppSkillCreateManyAndReturnArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*AppSkillCreate
@@ -547,8 +572,10 @@ func (m *AppSkill) ScanFields(cols []string) []any {
 	targets := make([]any, len(cols))
 	for i, col := range cols {
 		switch col {
-		case "app_id":
-			targets[i] = &m.App_id
+		case "app_language":
+			targets[i] = &m.App_language
+		case "app_name":
+			targets[i] = &m.App_name
 		case "skillId":
 			targets[i] = &m.SkillId
 		case "priority":
@@ -559,13 +586,15 @@ func (m *AppSkill) ScanFields(cols []string) []any {
 }
 
 var appSkillDefaultCols = []string{
-	"app_id",
+	"app_language",
+	"app_name",
 	"skillId",
 	"priority",
 }
 
 var appSkillPKCols = []string{
-	"app_id",
+	"app_language",
+	"app_name",
 	"skillId",
 }
 
@@ -576,10 +605,11 @@ func selectAppSkillCols(selects *AppSkillSelect, omits *AppSkillOmit, forceCols 
 		return appSkillDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.App_id || selects.SkillId || selects.Priority || selects.App != nil || selects.Skill != nil)
+	anySelected := selects != nil && (selects.App_language || selects.App_name || selects.SkillId || selects.Priority || selects.Skill != nil)
 
 	specs := []colSpec{
-		{"app_id", selects != nil && selects.App_id, omits != nil && omits.App_id, selects != nil && selects.App != nil},
+		{"app_language", selects != nil && selects.App_language, omits != nil && omits.App_language, false},
+		{"app_name", selects != nil && selects.App_name, omits != nil && omits.App_name, false},
 		{"skillId", selects != nil && selects.SkillId, omits != nil && omits.SkillId, selects != nil && selects.Skill != nil},
 		{"priority", selects != nil && selects.Priority, omits != nil && omits.Priority, false},
 	}
@@ -599,7 +629,7 @@ func (s *AppSkillSelect) hasAnyRelation() bool {
 	if s == nil {
 		return false
 	}
-	return s.App != nil || s.Skill != nil
+	return s.Skill != nil
 }
 
 type AppSkillUpsertBuilder struct {
@@ -642,8 +672,12 @@ func (b *AppSkillCreateBuilder) OnConflict(target UniqueConstraintTarget) *AppSk
 	}
 }
 
-func (b *AppSkillCreateBuilder) SetApp_id(v string) *AppSkillCreateBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *AppSkillCreateBuilder) SetApp_language(v AppLanguageType) *AppSkillCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
+	return b
+}
+func (b *AppSkillCreateBuilder) SetApp_name(v string) *AppSkillCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
 	return b
 }
 func (b *AppSkillCreateBuilder) SetSkillId(v string) *AppSkillCreateBuilder {
@@ -671,9 +705,10 @@ func (d *AppSkillDelegate) Create() *AppSkillCreateBuilder {
 }
 
 const (
-	providedAppSkillApp_id   uint64 = 1 << 0
-	providedAppSkillSkillId  uint64 = 1 << 1
-	providedAppSkillPriority uint64 = 1 << 2
+	providedAppSkillApp_language uint64 = 1 << 0
+	providedAppSkillApp_name     uint64 = 1 << 1
+	providedAppSkillSkillId      uint64 = 1 << 2
+	providedAppSkillPriority     uint64 = 1 << 3
 )
 
 func assignmentsToAppSkillCreate(assignments []FieldAssignment) (AppSkillCreate, error) {
@@ -683,13 +718,23 @@ func assignmentsToAppSkillCreate(assignments []FieldAssignment) (AppSkillCreate,
 
 	for _, a := range assignments {
 		switch a.Col {
-		case "app_id":
-			provided |= providedAppSkillApp_id
-			if v, ok := a.Val.(string); ok {
-				input.App_id = v
-				errs.ValidateString("app_id", v, true, 0, false, false)
+		case "app_language":
+			provided |= providedAppSkillApp_language
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.App_language = v
+				if !v.IsValid() {
+					errs.Add("app_language", v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", v))
+				}
 			} else {
-				errs.Add("app_id", a.Val, "type", "field app_id must be of type string")
+				errs.Add("app_language", a.Val, "type", "field app_language must be of type AppLanguageType")
+			}
+		case "app_name":
+			provided |= providedAppSkillApp_name
+			if v, ok := a.Val.(string); ok {
+				input.App_name = v
+				errs.ValidateString("app_name", v, true, 0, false, false)
+			} else {
+				errs.Add("app_name", a.Val, "type", "field app_name must be of type string")
 			}
 		case "skillId":
 			provided |= providedAppSkillSkillId
@@ -711,8 +756,11 @@ func assignmentsToAppSkillCreate(assignments []FieldAssignment) (AppSkillCreate,
 			}
 		}
 	}
-	if provided&providedAppSkillApp_id == 0 {
-		errs.Add("app_id", "", "required", "field App_id is required")
+	if provided&providedAppSkillApp_language == 0 {
+		errs.Add("app_language", nil, "required", "field App_language is required")
+	}
+	if provided&providedAppSkillApp_name == 0 {
+		errs.Add("app_name", "", "required", "field App_name is required")
 	}
 	if provided&providedAppSkillSkillId == 0 {
 		errs.Add("skillId", "", "required", "field SkillId is required")
@@ -725,10 +773,12 @@ func assignmentsToAppSkillCreate(assignments []FieldAssignment) (AppSkillCreate,
 }
 
 func (s *AppSkillCreate) ToColsVals() (cols []string, vals []any) {
-	cols = make([]string, 0, 3)
-	vals = make([]any, 0, 3)
-	cols = append(cols, "app_id")
-	vals = append(vals, s.App_id)
+	cols = make([]string, 0, 4)
+	vals = make([]any, 0, 4)
+	cols = append(cols, "app_language")
+	vals = append(vals, s.App_language)
+	cols = append(cols, "app_name")
+	vals = append(vals, s.App_name)
 	cols = append(cols, "skillId")
 	vals = append(vals, s.SkillId)
 	if s.Priority != nil {
@@ -1120,7 +1170,7 @@ func (d *AppSkillDelegate) buildBulkInsertSQL(q *Queries, batch []*AppSkillCreat
 		colMask |= input.colMask()
 	}
 
-	cols = make([]string, 0, 3)
+	cols = make([]string, 0, 4)
 	for i, c := range appSkillDefaultCols {
 		if colMask&(1<<i) != 0 {
 			cols = append(cols, c)
@@ -1153,8 +1203,10 @@ func (d *AppSkillDelegate) buildBulkInsertSQL(q *Queries, batch []*AppSkillCreat
 			}
 			writeDefault := false
 			switch col {
-			case "app_id":
-				vals = append(vals, input.App_id)
+			case "app_language":
+				vals = append(vals, input.App_language)
+			case "app_name":
+				vals = append(vals, input.App_name)
 			case "skillId":
 				vals = append(vals, input.SkillId)
 			case "priority":
@@ -1412,16 +1464,18 @@ func AppSkillConflictUpdate(fn func(u *AppSkillUpsert)) *ConflictAction {
 }
 
 type AppSkillUpsert struct {
-	App_id   fieldUpsert[string]
-	SkillId  fieldUpsert[string]
-	Priority fieldUpsert[PriorityType]
+	App_language fieldUpsert[AppLanguageType]
+	App_name     fieldUpsert[string]
+	SkillId      fieldUpsert[string]
+	Priority     fieldUpsert[PriorityType]
 }
 
 func newAppSkillUpsert(up *ConflictUpdate) *AppSkillUpsert {
 	return &AppSkillUpsert{
-		App_id:   fieldUpsert[string]{column: "app_id", update: up},
-		SkillId:  fieldUpsert[string]{column: "skillId", update: up},
-		Priority: fieldUpsert[PriorityType]{column: "priority", update: up},
+		App_language: fieldUpsert[AppLanguageType]{column: "app_language", update: up},
+		App_name:     fieldUpsert[string]{column: "app_name", update: up},
+		SkillId:      fieldUpsert[string]{column: "skillId", update: up},
+		Priority:     fieldUpsert[PriorityType]{column: "priority", update: up},
 	}
 }
 
@@ -1437,18 +1491,32 @@ type AppSkillUpdateManyAndReturnBuilder struct {
 	*UpdateManyAndReturnBuilder[AppSkill, AppSkillSelect, AppSkillOmit]
 }
 
-func (b *AppSkillUpdateBuilder) SetApp_id(v string) *AppSkillUpdateBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *AppSkillUpdateBuilder) SetApp_language(v AppLanguageType) *AppSkillUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
 	return b
 }
 
-func (b *AppSkillUpdateManyBuilder) SetApp_id(v string) *AppSkillUpdateManyBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *AppSkillUpdateManyBuilder) SetApp_language(v AppLanguageType) *AppSkillUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
 	return b
 }
 
-func (b *AppSkillUpdateManyAndReturnBuilder) SetApp_id(v string) *AppSkillUpdateManyAndReturnBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *AppSkillUpdateManyAndReturnBuilder) SetApp_language(v AppLanguageType) *AppSkillUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
+	return b
+}
+func (b *AppSkillUpdateBuilder) SetApp_name(v string) *AppSkillUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
+	return b
+}
+
+func (b *AppSkillUpdateManyBuilder) SetApp_name(v string) *AppSkillUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
+	return b
+}
+
+func (b *AppSkillUpdateManyAndReturnBuilder) SetApp_name(v string) *AppSkillUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
 	return b
 }
 func (b *AppSkillUpdateBuilder) SetSkillId(v string) *AppSkillUpdateBuilder {
@@ -2340,9 +2408,16 @@ func (d *AppSkillDelegate) runDelete(ctx context.Context, where []PredicateOf[Ap
 			var pkPreds []PredicateOf[AppSkill]
 			pkPreds = append(pkPreds, Predicate[AppSkill]{
 				Data: PredicateData{
-					Column:   "app_id",
+					Column:   "app_language",
 					Operator: "=",
-					Value:    res.App_id,
+					Value:    res.App_language,
+				},
+			})
+			pkPreds = append(pkPreds, Predicate[AppSkill]{
+				Data: PredicateData{
+					Column:   "app_name",
+					Operator: "=",
+					Value:    res.App_name,
 				},
 			})
 			pkPreds = append(pkPreds, Predicate[AppSkill]{
@@ -2505,28 +2580,6 @@ func (d *AppSkillDelegate) runCount(ctx context.Context, params QueryParams[AppS
 func (d *AppSkillDelegate) loadRelations(ctx context.Context, records []*AppSkill, selects *AppSkillSelect) error {
 	if selects == nil || len(records) == 0 {
 		return nil
-	}
-	if selects.App != nil {
-		relationSelects, relationOmits, relationParams := selects.App.GetRelationParams()
-		returningCols := selectAppCols(relationSelects, relationOmits, "name")
-		// Current model holds the FK: AppSkill.app_id
-		allChildren, err := loadRelation(
-			ctx, d.client, records,
-			directKey(func(p *AppSkill) string { return p.App_id }),
-			"App",
-			"name",
-			returningCols,
-			scanInto(returningCols, (*App).ScanFields),
-			directKey(func(c *App) string { return c.Name }),
-			setOne(func(p *AppSkill, c *App) { p.App = c }),
-			relationParams,
-		)
-		if err != nil {
-			return fmt.Errorf("loading app: %w", err)
-		}
-		if err := d.client.App.loadRelations(ctx, allChildren, relationSelects); err != nil {
-			return err
-		}
 	}
 	if selects.Skill != nil {
 		relationSelects, relationOmits, relationParams := selects.Skill.GetRelationParams()

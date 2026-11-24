@@ -16,6 +16,7 @@ func NewApp() *cli.Command {
 			getServeCmd(),
 			getRestartCmd(),
 			getStatusCmd(),
+			getToolsCmd(),
 			getTraceCmd(),
 			getDownCmd(),
 		},

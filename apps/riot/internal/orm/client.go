@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/pressly/goose/v3"
+	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -229,6 +230,57 @@ const (
 func (e PriorityType) IsValid() bool {
 	switch e {
 	case Priority_LOW, Priority_NORMAL, Priority_HIGH, Priority_ESSENTIAL:
+		return true
+	}
+	return false
+}
+
+// AppTypeType represents the "AppType" enum in the schema.
+//
+// Values:
+//
+//	AppType_APP     -> "app"
+//	AppType_PACKAGE -> "package"
+type AppTypeType string
+
+const (
+	// AppType_APP maps to "app" in the database.
+	AppType_APP AppTypeType = "app"
+	// AppType_PACKAGE maps to "package" in the database.
+	AppType_PACKAGE AppTypeType = "package"
+)
+
+// IsValid reports whether e is a valid AppTypeType enum value.
+func (e AppTypeType) IsValid() bool {
+	switch e {
+	case AppType_APP, AppType_PACKAGE:
+		return true
+	}
+	return false
+}
+
+// AppLanguageType represents the "AppLanguage" enum in the schema.
+//
+// Values:
+//
+//	AppLanguage_TYPESCRIPT -> "typescript"
+//	AppLanguage_GO         -> "go"
+//	AppLanguage_PYTHON     -> "python"
+type AppLanguageType string
+
+const (
+	// AppLanguage_TYPESCRIPT maps to "typescript" in the database.
+	AppLanguage_TYPESCRIPT AppLanguageType = "typescript"
+	// AppLanguage_GO maps to "go" in the database.
+	AppLanguage_GO AppLanguageType = "go"
+	// AppLanguage_PYTHON maps to "python" in the database.
+	AppLanguage_PYTHON AppLanguageType = "python"
+)
+
+// IsValid reports whether e is a valid AppLanguageType enum value.
+func (e AppLanguageType) IsValid() bool {
+	switch e {
+	case AppLanguage_TYPESCRIPT, AppLanguage_GO, AppLanguage_PYTHON:
 		return true
 	}
 	return false
@@ -959,15 +1011,25 @@ type Queries struct {
 	AgentSkill *AgentSkillDelegate
 	// App provides CRUD operations for App.
 	//
-	//   name       string required
-	//   project_id string required
+	//   type       AppType     required
+	//   language   AppLanguage required
+	//   name       string      required
+	//   location   string      required
+	//   project_id string      required
 	App *AppDelegate
 	// AppSkill provides CRUD operations for AppSkill.
 	//
-	//   app_id   string   required
-	//   skillId  string   required
-	//   priority Priority default: NORMAL
+	//   app_language AppLanguage required
+	//   app_name     string      required
+	//   skillId      string      required
+	//   priority     Priority    default: NORMAL
 	AppSkill *AppSkillDelegate
+	// AppAgent provides CRUD operations for AppAgent.
+	//
+	//   app_language AppLanguage required
+	//   app_name     string      required
+	//   agentId      string      required
+	AppAgent *AppAgentDelegate
 	// Document provides CRUD operations for Document.
 	//
 	//   id        string required
@@ -991,6 +1053,7 @@ type Queries struct {
 	// Project provides CRUD operations for Project.
 	//
 	//   name       string required
+	//   location   string required
 	//   skillsPath string required
 	//   agentsPath string required
 	Project *ProjectDelegate
@@ -1019,18 +1082,19 @@ type Queries struct {
 	//
 	//   dependencyId string required
 	//   dependentId  string required
-	//   agent        string default: ""
+	//   agent        string default:
 	//   recursive    bool   default: true
 	SkillDependency *SkillDependencyDelegate
 	// StyleToken provides CRUD operations for StyleToken.
 	//
-	//   style    string    required
-	//   value    string    required
-	//   mode     ThemeMode required
-	//   type     StyleType required
-	//   token    TokenType required
-	//   app_id   string    required
-	//   variable string    optional
+	//   style        string      required
+	//   value        string      required
+	//   mode         ThemeMode   required
+	//   type         StyleType   required
+	//   token        TokenType   required
+	//   app_language AppLanguage required
+	//   app_name     string      required
+	//   variable     string      optional
 	StyleToken *StyleTokenDelegate
 	// Trash provides CRUD operations for Trash.
 	//
@@ -1086,6 +1150,7 @@ func (q *Queries) initDelegates() {
 	q.AgentSkill = &AgentSkillDelegate{client: q}
 	q.App = &AppDelegate{client: q}
 	q.AppSkill = &AppSkillDelegate{client: q}
+	q.AppAgent = &AppAgentDelegate{client: q}
 	q.Document = &DocumentDelegate{client: q}
 	q.Reference = &ReferenceDelegate{client: q}
 	q.SkillReference = &SkillReferenceDelegate{client: q}
@@ -1110,6 +1175,8 @@ func (q *Queries) copyHooksFrom(other *Queries) {
 	copy(q.App.extensions, other.App.extensions)
 	q.AppSkill.extensions = make([]AppSkillExtension, len(other.AppSkill.extensions))
 	copy(q.AppSkill.extensions, other.AppSkill.extensions)
+	q.AppAgent.extensions = make([]AppAgentExtension, len(other.AppAgent.extensions))
+	copy(q.AppAgent.extensions, other.AppAgent.extensions)
 	q.Document.extensions = make([]DocumentExtension, len(other.Document.extensions))
 	copy(q.Document.extensions, other.Document.extensions)
 	q.Reference.extensions = make([]ReferenceExtension, len(other.Reference.extensions))
@@ -1149,7 +1216,7 @@ func (db *DB) Raw() *sql.DB {
 
 // RunMigrations runs all pending migrations from the embedded folder.
 func (db *DB) RunMigrations(ctx context.Context) error {
-	ormLog.Info("running migrations")
+	log.Println("Running migrations...")
 	if err := goose.SetDialect(db.provider); err != nil {
 		return err
 	}
@@ -1157,10 +1224,10 @@ func (db *DB) RunMigrations(ctx context.Context) error {
 	goose.SetBaseFS(migrationsFS)
 	err := goose.UpContext(ctx, db.sqlDB, "migrations")
 	if err != nil {
-		ormLog.Error("migrations failed", err.Error())
+		log.Printf("Migrations failed: %v", err)
 		return err
 	}
-	ormLog.Info("migrations completed successfully")
+	log.Println("Migrations completed successfully.")
 	return nil
 }
 
@@ -1197,28 +1264,28 @@ func (q *Queries) prepare(ctx context.Context, query string) (*sql.Stmt, error) 
 }
 
 func (q *Queries) query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	ormLog.Trace("sql query", query, fmt.Sprintf("args: %v", args))
+	log.Printf("[%s] SQL Query: %s | Args: %v", strings.ToUpper(q.provider), query, args)
 	stmt, err := q.prepare(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	res, err := stmt.QueryContext(ctx, args...)
 	if err != nil {
-		ormLog.Error("sql error", err.Error(), query, fmt.Sprintf("args: %v", args))
+		log.Printf("[%s] SQL Error: %v | Query: %s | Args: %v", strings.ToUpper(q.provider), err, query, args)
 		return nil, TranslateDBError(err)
 	}
 	return res, nil
 }
 
 func (q *Queries) exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	ormLog.Trace("sql exec", query, fmt.Sprintf("args: %v", args))
+	log.Printf("[%s] SQL Exec: %s | Args: %v", strings.ToUpper(q.provider), query, args)
 	stmt, err := q.prepare(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	res, err := stmt.ExecContext(ctx, args...)
 	if err != nil {
-		ormLog.Error("sql error", err.Error(), query, fmt.Sprintf("args: %v", args))
+		log.Printf("[%s] SQL Error: %v | Query: %s | Args: %v", strings.ToUpper(q.provider), err, query, args)
 		return nil, TranslateDBError(err)
 	}
 	return res, nil
@@ -1240,7 +1307,7 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 	if !ok {
 		return fn(q)
 	}
-	ormLog.Trace("sql begin transaction")
+	log.Printf("[%s] SQL Begin Transaction", strings.ToUpper(q.provider))
 	tx, err := starter.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1248,7 +1315,7 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 
 	defer func() {
 		if p := recover(); p != nil {
-			ormLog.Warn("sql rollback transaction")
+			log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(q.provider))
 			_ = tx.Rollback()
 			panic(p)
 		}
@@ -1266,11 +1333,11 @@ func (q *Queries) transaction(ctx context.Context, fn func(txQ *Queries) error) 
 	txQueries.copyHooksFrom(q)
 
 	if err := fn(txQueries); err != nil {
-		ormLog.Warn("sql rollback transaction")
+		log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(q.provider))
 		_ = tx.Rollback()
 		return err
 	}
-	ormLog.Trace("sql commit transaction")
+	log.Printf("[%s] SQL Commit Transaction", strings.ToUpper(q.provider))
 	return tx.Commit()
 }
 
@@ -2378,6 +2445,18 @@ func unpackSlice(val any) []any {
 			res[i] = x
 		}
 		return res
+	case []AppTypeType:
+		res := make([]any, len(v))
+		for i, x := range v {
+			res[i] = x
+		}
+		return res
+	case []AppLanguageType:
+		res := make([]any, len(v))
+		for i, x := range v {
+			res[i] = x
+		}
+		return res
 	default:
 		return []any{val}
 	}
@@ -2393,7 +2472,7 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	if err != nil {
 		return nil, TranslateDBError(err)
 	}
-	ormLog.Trace("sql begin transaction")
+	log.Printf("[%s] SQL Begin Transaction", strings.ToUpper(db.provider))
 	q := &Queries{
 		db:        sqlTx,
 		baseDB:    db.Queries.baseDB,
@@ -2411,12 +2490,12 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 }
 
 func (tx *Tx) Commit() error {
-	ormLog.Trace("sql commit transaction")
+	log.Printf("[%s] SQL Commit Transaction", strings.ToUpper(tx.provider))
 	return TranslateDBError(tx.tx.Commit())
 }
 
 func (tx *Tx) Rollback() error {
-	ormLog.Warn("sql rollback transaction")
+	log.Printf("[%s] SQL Rollback Transaction", strings.ToUpper(tx.provider))
 	return TranslateDBError(tx.tx.Rollback())
 }
 

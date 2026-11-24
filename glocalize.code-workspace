@@ -3,6 +3,9 @@
 		{
 			"name": "glocalize",
 			"path": "."
+		},
+		{
+			"path": "../.agents"
 		}
 	],
 	"settings": {

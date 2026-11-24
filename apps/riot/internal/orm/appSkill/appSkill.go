@@ -36,40 +36,45 @@ func Not(pred riot.PredicateOf[riot.AppSkill]) riot.PredicateOf[riot.AppSkill] {
 	return riot.Not(pred)
 }
 
-var App_id = riot.StringField[riot.AppSkill]{Column: "app_id"}
+var App_language = riot.Field[riot.AppSkill, riot.AppLanguageType]{Column: "app_language"}
+
+var App_name = riot.StringField[riot.AppSkill]{Column: "app_name"}
 
 var SkillId = riot.StringField[riot.AppSkill]{Column: "skillId"}
 
 var Priority = riot.Field[riot.AppSkill, riot.PriorityType]{Column: "priority"}
 
-type app_id_SkillId struct {
+type app_language_App_name_SkillId struct {
 	riot.CompositeUniqueConstraint[riot.AppSkill]
 	Column string
 }
 
-var App_id_SkillId = app_id_SkillId{
+var App_language_App_name_SkillId = app_language_App_name_SkillId{
 	CompositeUniqueConstraint: riot.CompositeUniqueConstraint[riot.AppSkill]{
-		Name: "App_id_SkillId",
+		Name: "App_language_App_name_SkillId",
 		Columns: []string{
-			"app_id",
+			"app_language",
+			"app_name",
 			"skillId",
 		},
 	},
-	Column: "App_id_SkillId",
+	Column: "App_language_App_name_SkillId",
 }
 
-func (f app_id_SkillId) EQ(app_id string, skillId string) riot.UniquePredicate[riot.AppSkill] {
+func (f app_language_App_name_SkillId) EQ(app_language riot.AppLanguageType, app_name string, skillId string) riot.UniquePredicate[riot.AppSkill] {
 	return riot.UniquePredicate[riot.AppSkill]{
 		Data: riot.PredicateData{
-			Column:   "App_id_SkillId",
+			Column:   "App_language_App_name_SkillId",
 			Operator: "AND",
 			Value: map[string]any{
-				"app_id":  app_id,
-				"skillId": skillId,
+				"app_language": app_language,
+				"app_name":     app_name,
+				"skillId":      skillId,
 			},
 			IsLogical: true,
 			Children: []riot.PredicateData{
-				{Column: "app_id", Operator: "=", Value: app_id},
+				{Column: "app_language", Operator: "=", Value: app_language},
+				{Column: "app_name", Operator: "=", Value: app_name},
 				{Column: "skillId", Operator: "=", Value: skillId},
 			},
 		},

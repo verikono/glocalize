@@ -36,9 +36,49 @@ func Not(pred riot.PredicateOf[riot.App]) riot.PredicateOf[riot.App] {
 	return riot.Not(pred)
 }
 
-var Name = riot.StringUniqueField[riot.App]{Column: "name"}
+var Type = riot.Field[riot.App, riot.AppTypeType]{Column: "type"}
+
+var Language = riot.Field[riot.App, riot.AppLanguageType]{Column: "language"}
+
+var Name = riot.StringField[riot.App]{Column: "name"}
+
+var Location = riot.StringField[riot.App]{Column: "location"}
 
 var Project_id = riot.StringField[riot.App]{Column: "project_id"}
+
+type language_Name struct {
+	riot.CompositeUniqueConstraint[riot.App]
+	Column string
+}
+
+var Language_Name = language_Name{
+	CompositeUniqueConstraint: riot.CompositeUniqueConstraint[riot.App]{
+		Name: "Language_Name",
+		Columns: []string{
+			"language",
+			"name",
+		},
+	},
+	Column: "Language_Name",
+}
+
+func (f language_Name) EQ(language riot.AppLanguageType, name string) riot.UniquePredicate[riot.App] {
+	return riot.UniquePredicate[riot.App]{
+		Data: riot.PredicateData{
+			Column:   "Language_Name",
+			Operator: "AND",
+			Value: map[string]any{
+				"language": language,
+				"name":     name,
+			},
+			IsLogical: true,
+			Children: []riot.PredicateData{
+				{Column: "language", Operator: "=", Value: language},
+				{Column: "name", Operator: "=", Value: name},
+			},
+		},
+	}
+}
 
 type CreateInput = riot.AppCreate
 type Create = riot.AppCreate

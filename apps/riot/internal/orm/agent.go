@@ -23,6 +23,7 @@ type Agent struct {
 	Trashes      []*TrashAgent `json:"trashes,omitempty"`
 	Skills       []*AgentSkill `json:"skills,omitempty"`
 	Projects     []*Project    `json:"projects,omitempty"`
+	Apps         []*AppAgent   `json:"apps,omitempty"`
 }
 
 // AgentCreate contains model input fields for Agent creation operations.
@@ -220,6 +221,7 @@ func assignmentsToAgentUpdate(assignments []FieldAssignment) (AgentUpdate, error
 //	trashes      ([]TrashAgent)
 //	skills       ([]AgentSkill)
 //	projects     ([]Project)
+//	apps         ([]AppAgent)
 type AgentSelect struct {
 	Id           bool                  `json:"id"`
 	Name         bool                  `json:"name"`
@@ -232,6 +234,7 @@ type AgentSelect struct {
 	Trashes      TrashAgentSelectQuery `json:"trashes,omitempty"`
 	Skills       AgentSkillSelectQuery `json:"skills,omitempty"`
 	Projects     ProjectSelectQuery    `json:"projects,omitempty"`
+	Apps         AppAgentSelectQuery   `json:"apps,omitempty"`
 }
 
 var fullAgentSelectVal = &AgentSelect{
@@ -358,6 +361,7 @@ func (b *AgentQueryBuilder) GetRelationParams() (*AgentSelect, *AgentOmit, Query
 //	trashes      ([]TrashAgent)
 //	skills       ([]AgentSkill)
 //	projects     ([]Project)
+//	apps         ([]AppAgent)
 type AgentCreateArgs struct {
 	// Data contains the model fields to insert.
 	Data *AgentCreate
@@ -419,6 +423,7 @@ func (a *AgentCreateManyArgs) AppendData(builders ...*AgentCreateBuilder) *Agent
 //	trashes      ([]TrashAgent)
 //	skills       ([]AgentSkill)
 //	projects     ([]Project)
+//	apps         ([]AppAgent)
 type AgentCreateManyAndReturnArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*AgentCreate
@@ -721,7 +726,7 @@ func selectAgentCols(selects *AgentSelect, omits *AgentOmit, forceCols ...string
 		return agentDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.Id || selects.Name || selects.Description || selects.Content || selects.AllowedTools || selects.Metadata || selects.CreatedAt || selects.UpdatedAt || selects.Trashes != nil || selects.Skills != nil || selects.Projects != nil)
+	anySelected := selects != nil && (selects.Id || selects.Name || selects.Description || selects.Content || selects.AllowedTools || selects.Metadata || selects.CreatedAt || selects.UpdatedAt || selects.Trashes != nil || selects.Skills != nil || selects.Projects != nil || selects.Apps != nil)
 
 	specs := []colSpec{
 		{"id", selects != nil && selects.Id, omits != nil && omits.Id, selects != nil && selects.hasAnyRelation()},
@@ -749,7 +754,7 @@ func (s *AgentSelect) hasAnyRelation() bool {
 	if s == nil {
 		return false
 	}
-	return s.Trashes != nil || s.Skills != nil || s.Projects != nil
+	return s.Trashes != nil || s.Skills != nil || s.Projects != nil || s.Apps != nil
 }
 
 type AgentUpsertBuilder struct {
@@ -2908,6 +2913,28 @@ func (d *AgentDelegate) loadRelations(ctx context.Context, records []*Agent, sel
 			return fmt.Errorf("loading projects: %w", err)
 		}
 		if err := d.client.Project.loadRelations(ctx, allChildren, relationSelects); err != nil {
+			return err
+		}
+	}
+	if selects.Apps != nil {
+		relationSelects, relationOmits, relationParams := selects.Apps.GetRelationParams()
+		returningCols := selectAppAgentCols(relationSelects, relationOmits, "agentId")
+		// Inverse holds the FK: AppAgent.agentId
+		allChildren, err := loadRelation(
+			ctx, d.client, records,
+			directKey(func(p *Agent) string { return p.Id }),
+			"AppAgent",
+			"agentId",
+			returningCols,
+			scanInto(returningCols, (*AppAgent).ScanFields),
+			directKey(func(c *AppAgent) string { return c.AgentId }),
+			appendMany(func(p *Agent) *[]*AppAgent { return &p.Apps }),
+			relationParams,
+		)
+		if err != nil {
+			return fmt.Errorf("loading apps: %w", err)
+		}
+		if err := d.client.AppAgent.loadRelations(ctx, allChildren, relationSelects); err != nil {
 			return err
 		}
 	}

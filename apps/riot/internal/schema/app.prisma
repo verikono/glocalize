@@ -1,19 +1,37 @@
 
+// App is a unit of software inside a project: an application or a package.
+// It is identified by (language, name), not by name alone @see .agents.md "### app identity"
+// The child models carry (app_language, app_name) as plain columns rather than a
+// relation: phi's relation loader keys on a single column only @see .agents.md "### compound keys"
 model App {
-  name String @id @unique
-  project Project @relation("ProjectApps", fields: [project_id], references: [name])
-  project_id String 
-  styles StyleToken[] @relation("AppStyleTokens")
-  skills AppSkill[] @relation("AppSkills")
+  type     AppType /// app or package
+  language AppLanguage /// decides where `name` is read from
+  name     String
+  location String /// path relative to the owning project's root
+
+  project    Project @relation("ProjectApps", fields: [project_id], references: [name])
+  project_id String
+
+  @@id([language, name])
 }
 
 model AppSkill {
-  app_id   String
-  skillId  String
-  priority Priority @default(NORMAL)
+  app_language AppLanguage
+  app_name     String
+  skillId      String
+  priority     Priority    @default(NORMAL)
 
-  app   App   @relation("AppSkills", fields: [app_id], references: [name])
   skill Skill @relation("SkillApps", fields: [skillId], references: [id])
 
-  @@id([app_id, skillId])
+  @@id([app_language, app_name, skillId])
+}
+
+model AppAgent {
+  app_language AppLanguage
+  app_name     String
+  agentId      String
+
+  agent Agent @relation("AgentApps", fields: [agentId], references: [id])
+
+  @@id([app_language, app_name, agentId])
 }

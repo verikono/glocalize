@@ -38,6 +38,8 @@ func Not(pred riot.PredicateOf[riot.Project]) riot.PredicateOf[riot.Project] {
 
 var Name = riot.StringUniqueField[riot.Project]{Column: "name"}
 
+var Location = riot.StringField[riot.Project]{Column: "location"}
+
 var SkillsPath = riot.StringField[riot.Project]{Column: "skillsPath"}
 
 var AgentsPath = riot.StringField[riot.Project]{Column: "agentsPath"}

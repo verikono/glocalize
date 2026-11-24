@@ -30,3 +30,14 @@ enum Priority {
   HIGH
   ESSENTIAL
 }
+
+enum AppType {
+  app
+  package
+}
+
+enum AppLanguage {
+  typescript
+  go
+  python
+}

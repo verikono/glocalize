@@ -46,42 +46,47 @@ var Type = riot.Field[riot.StyleToken, riot.StyleTypeType]{Column: "type"}
 
 var Token = riot.Field[riot.StyleToken, riot.TokenTypeType]{Column: "token"}
 
-var App_id = riot.StringField[riot.StyleToken]{Column: "app_id"}
+var App_language = riot.Field[riot.StyleToken, riot.AppLanguageType]{Column: "app_language"}
+
+var App_name = riot.StringField[riot.StyleToken]{Column: "app_name"}
 
 var Variable = riot.OptionalStringField[riot.StyleToken]{StringField: riot.StringField[riot.StyleToken]{Column: "variable"}}
 
-type app_id_Mode_Token_Style struct {
+type app_language_App_name_Mode_Token_Style struct {
 	riot.CompositeUniqueConstraint[riot.StyleToken]
 	Column string
 }
 
-var App_id_Mode_Token_Style = app_id_Mode_Token_Style{
+var App_language_App_name_Mode_Token_Style = app_language_App_name_Mode_Token_Style{
 	CompositeUniqueConstraint: riot.CompositeUniqueConstraint[riot.StyleToken]{
-		Name: "App_id_Mode_Token_Style",
+		Name: "App_language_App_name_Mode_Token_Style",
 		Columns: []string{
-			"app_id",
+			"app_language",
+			"app_name",
 			"mode",
 			"token",
 			"style",
 		},
 	},
-	Column: "App_id_Mode_Token_Style",
+	Column: "App_language_App_name_Mode_Token_Style",
 }
 
-func (f app_id_Mode_Token_Style) EQ(app_id string, mode riot.ThemeModeType, token riot.TokenTypeType, style string) riot.UniquePredicate[riot.StyleToken] {
+func (f app_language_App_name_Mode_Token_Style) EQ(app_language riot.AppLanguageType, app_name string, mode riot.ThemeModeType, token riot.TokenTypeType, style string) riot.UniquePredicate[riot.StyleToken] {
 	return riot.UniquePredicate[riot.StyleToken]{
 		Data: riot.PredicateData{
-			Column:   "App_id_Mode_Token_Style",
+			Column:   "App_language_App_name_Mode_Token_Style",
 			Operator: "AND",
 			Value: map[string]any{
-				"app_id": app_id,
-				"mode":   mode,
-				"token":  token,
-				"style":  style,
+				"app_language": app_language,
+				"app_name":     app_name,
+				"mode":         mode,
+				"token":        token,
+				"style":        style,
 			},
 			IsLogical: true,
 			Children: []riot.PredicateData{
-				{Column: "app_id", Operator: "=", Value: app_id},
+				{Column: "app_language", Operator: "=", Value: app_language},
+				{Column: "app_name", Operator: "=", Value: app_name},
 				{Column: "mode", Operator: "=", Value: mode},
 				{Column: "token", Operator: "=", Value: token},
 				{Column: "style", Operator: "=", Value: style},

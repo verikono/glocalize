@@ -11,6 +11,7 @@ model Agent {
   trashes  TrashAgent[]
   skills   AgentSkill[] @relation("AgentSkills")
   projects Project[]    @relation("ProjectAgents")
+  apps     AppAgent[]   @relation("AgentApps")
 }
 
 model AgentSkill {

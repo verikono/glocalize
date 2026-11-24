@@ -11,35 +11,37 @@ import (
 
 // StyleToken represents the database model
 type StyleToken struct {
-	Style    string        `db:"style" json:"style"`
-	Value    string        `db:"value" json:"value"`
-	Mode     ThemeModeType `db:"mode" json:"mode"`
-	Type     StyleTypeType `db:"type" json:"type"`
-	Token    TokenTypeType `db:"token" json:"token"`
-	App_id   string        `db:"app_id" json:"app_id"`
-	Variable *string       `db:"variable" json:"variable,omitempty"`
-	App      *App          `json:"app,omitempty"`
+	Style        string          `db:"style" json:"style"`
+	Value        string          `db:"value" json:"value"`
+	Mode         ThemeModeType   `db:"mode" json:"mode"`
+	Type         StyleTypeType   `db:"type" json:"type"`
+	Token        TokenTypeType   `db:"token" json:"token"`
+	App_language AppLanguageType `db:"app_language" json:"app_language"`
+	App_name     string          `db:"app_name" json:"app_name"`
+	Variable     *string         `db:"variable" json:"variable,omitempty"`
 }
 
 // StyleTokenCreate contains model input fields for StyleToken creation operations.
 //
 // Fields for StyleToken:
 //
-//	style    string    required
-//	value    string    required
-//	mode     ThemeMode required
-//	type     StyleType required
-//	token    TokenType required
-//	app_id   string    required
-//	variable string    optional
+//	style        string      required
+//	value        string      required
+//	mode         ThemeMode   required
+//	type         StyleType   required
+//	token        TokenType   required
+//	app_language AppLanguage required
+//	app_name     string      required
+//	variable     string      optional
 type StyleTokenCreate struct {
-	Style    string        `json:"style"`
-	Value    string        `json:"value"`
-	Mode     ThemeModeType `json:"mode"`
-	Type     StyleTypeType `json:"type"`
-	Token    TokenTypeType `json:"token"`
-	App_id   string        `json:"app_id"`
-	Variable *string       `json:"variable"`
+	Style        string          `json:"style"`
+	Value        string          `json:"value"`
+	Mode         ThemeModeType   `json:"mode"`
+	Type         StyleTypeType   `json:"type"`
+	Token        TokenTypeType   `json:"token"`
+	App_language AppLanguageType `json:"app_language"`
+	App_name     string          `json:"app_name"`
+	Variable     *string         `json:"variable"`
 }
 
 // colMask returns a bit mask of columns that are set
@@ -51,21 +53,23 @@ func (s *StyleTokenCreate) colMask() uint64 {
 	mask |= 1 << 3
 	mask |= 1 << 4
 	mask |= 1 << 5
+	mask |= 1 << 6
 	if s.Variable != nil {
-		mask |= 1 << 6
+		mask |= 1 << 7
 	}
 	return mask
 }
 
 // StyleTokenUpdate contains model input fields for StyleToken update operations.
 type StyleTokenUpdate struct {
-	Style    *string        `json:"style"`
-	Value    *string        `json:"value"`
-	Mode     *ThemeModeType `json:"mode"`
-	Type     *StyleTypeType `json:"type"`
-	Token    *TokenTypeType `json:"token"`
-	App_id   *string        `json:"app_id"`
-	Variable *string        `json:"variable"`
+	Style        *string          `json:"style"`
+	Value        *string          `json:"value"`
+	Mode         *ThemeModeType   `json:"mode"`
+	Type         *StyleTypeType   `json:"type"`
+	Token        *TokenTypeType   `json:"token"`
+	App_language *AppLanguageType `json:"app_language"`
+	App_name     *string          `json:"app_name"`
+	Variable     *string          `json:"variable"`
 }
 
 func (u *StyleTokenUpdate) ToColsVals() ([]string, []any) {
@@ -91,9 +95,13 @@ func (u *StyleTokenUpdate) ToColsVals() ([]string, []any) {
 		cols = append(cols, "token")
 		vals = append(vals, u.Token)
 	}
-	if u.App_id != nil {
-		cols = append(cols, "app_id")
-		vals = append(vals, u.App_id)
+	if u.App_language != nil {
+		cols = append(cols, "app_language")
+		vals = append(vals, u.App_language)
+	}
+	if u.App_name != nil {
+		cols = append(cols, "app_name")
+		vals = append(vals, u.App_name)
 	}
 	if u.Variable != nil {
 		cols = append(cols, "variable")
@@ -168,14 +176,28 @@ func assignmentsToStyleTokenUpdate(assignments []FieldAssignment) (StyleTokenUpd
 			} else {
 				errs.Add("token", a.Val, "type", "field token must be of type TokenTypeType")
 			}
-		case "app_id":
-			if v, ok := a.Val.(string); ok {
-				input.App_id = &v
-				errs.ValidateString("app_id", v, false, 0, false, false)
-			} else if v, ok := a.Val.(*string); ok {
-				input.App_id = v
+		case "app_language":
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.App_language = &v
+				if !v.IsValid() {
+					errs.Add("app_language", v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", v))
+				}
+			} else if v, ok := a.Val.(*AppLanguageType); ok {
+				input.App_language = v
+				if v != nil && !v.IsValid() {
+					errs.Add("app_language", *v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", *v))
+				}
 			} else {
-				errs.Add("app_id", a.Val, "type", "field app_id must be of type string")
+				errs.Add("app_language", a.Val, "type", "field app_language must be of type AppLanguageType")
+			}
+		case "app_name":
+			if v, ok := a.Val.(string); ok {
+				input.App_name = &v
+				errs.ValidateString("app_name", v, false, 0, false, false)
+			} else if v, ok := a.Val.(*string); ok {
+				input.App_name = v
+			} else {
+				errs.Add("app_name", a.Val, "type", "field app_name must be of type string")
 			}
 		case "variable":
 			if v, ok := a.Val.(string); ok {
@@ -200,34 +222,34 @@ func assignmentsToStyleTokenUpdate(assignments []FieldAssignment) (StyleTokenUpd
 // Selectable fields:
 //
 //	-- Scalars --
-//	style    (bool)
-//	value    (bool)
-//	mode     (bool)
-//	type     (bool)
-//	token    (bool)
-//	app_id   (bool)
-//	variable (bool)
-//	-- Relations --
-//	app      (App)
+//	style        (bool)
+//	value        (bool)
+//	mode         (bool)
+//	type         (bool)
+//	token        (bool)
+//	app_language (bool)
+//	app_name     (bool)
+//	variable     (bool)
 type StyleTokenSelect struct {
-	Style    bool       `json:"style"`
-	Value    bool       `json:"value"`
-	Mode     bool       `json:"mode"`
-	Type     bool       `json:"type"`
-	Token    bool       `json:"token"`
-	App_id   bool       `json:"app_id"`
-	Variable bool       `json:"variable"`
-	App      *AppSelect `json:"app,omitempty"`
+	Style        bool `json:"style"`
+	Value        bool `json:"value"`
+	Mode         bool `json:"mode"`
+	Type         bool `json:"type"`
+	Token        bool `json:"token"`
+	App_language bool `json:"app_language"`
+	App_name     bool `json:"app_name"`
+	Variable     bool `json:"variable"`
 }
 
 var fullStyleTokenSelectVal = &StyleTokenSelect{
-	Style:    true,
-	Value:    true,
-	Mode:     true,
-	Type:     true,
-	Token:    true,
-	App_id:   true,
-	Variable: true,
+	Style:        true,
+	Value:        true,
+	Mode:         true,
+	Type:         true,
+	Token:        true,
+	App_language: true,
+	App_name:     true,
+	Variable:     true,
 }
 
 func fullStyleTokenSelect() *StyleTokenSelect {
@@ -238,7 +260,7 @@ func (s *StyleTokenSelect) hasAnyScalar() bool {
 	if s == nil {
 		return false
 	}
-	return s.Style || s.Value || s.Mode || s.Type || s.Token || s.App_id || s.Variable
+	return s.Style || s.Value || s.Mode || s.Type || s.Token || s.App_language || s.App_name || s.Variable
 }
 
 func (s *StyleTokenSelect) hasAnySelected() bool {
@@ -249,13 +271,14 @@ func (s *StyleTokenSelect) hasAnySelected() bool {
 }
 
 type StyleTokenOmit struct {
-	Style    bool `json:"style"`
-	Value    bool `json:"value"`
-	Mode     bool `json:"mode"`
-	Type     bool `json:"type"`
-	Token    bool `json:"token"`
-	App_id   bool `json:"app_id"`
-	Variable bool `json:"variable"`
+	Style        bool `json:"style"`
+	Value        bool `json:"value"`
+	Mode         bool `json:"mode"`
+	Type         bool `json:"type"`
+	Token        bool `json:"token"`
+	App_language bool `json:"app_language"`
+	App_name     bool `json:"app_name"`
+	Variable     bool `json:"variable"`
 }
 
 type StyleTokenSelectQuery interface {
@@ -328,17 +351,14 @@ func (b *StyleTokenQueryBuilder) GetRelationParams() (*StyleTokenSelect, *StyleT
 //
 // Fields for StyleToken:
 //
-//	style    string    required
-//	value    string    required
-//	mode     ThemeMode required
-//	type     StyleType required
-//	token    TokenType required
-//	app_id   string    required
-//	variable string    optional
-//
-// Relations for StyleToken:
-//
-//	app      (App)
+//	style        string      required
+//	value        string      required
+//	mode         ThemeMode   required
+//	type         StyleType   required
+//	token        TokenType   required
+//	app_language AppLanguage required
+//	app_name     string      required
+//	variable     string      optional
 type StyleTokenCreateArgs struct {
 	// Data contains the model fields to insert.
 	Data *StyleTokenCreate
@@ -354,13 +374,14 @@ type StyleTokenCreateArgs struct {
 //
 // Fields for StyleToken:
 //
-//	style    string    required
-//	value    string    required
-//	mode     ThemeMode required
-//	type     StyleType required
-//	token    TokenType required
-//	app_id   string    required
-//	variable string    optional
+//	style        string      required
+//	value        string      required
+//	mode         ThemeMode   required
+//	type         StyleType   required
+//	token        TokenType   required
+//	app_language AppLanguage required
+//	app_name     string      required
+//	variable     string      optional
 type StyleTokenCreateManyArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*StyleTokenCreate
@@ -385,17 +406,14 @@ func (a *StyleTokenCreateManyArgs) AppendData(builders ...*StyleTokenCreateBuild
 //
 // Fields for StyleToken:
 //
-//	style    string    required
-//	value    string    required
-//	mode     ThemeMode required
-//	type     StyleType required
-//	token    TokenType required
-//	app_id   string    required
-//	variable string    optional
-//
-// Relations for StyleToken:
-//
-//	app      (App)
+//	style        string      required
+//	value        string      required
+//	mode         ThemeMode   required
+//	type         StyleType   required
+//	token        TokenType   required
+//	app_language AppLanguage required
+//	app_name     string      required
+//	variable     string      optional
 type StyleTokenCreateManyAndReturnArgs struct {
 	// Data is the slice of model inputs to bulk insert.
 	Data []*StyleTokenCreate
@@ -662,8 +680,10 @@ func (m *StyleToken) ScanFields(cols []string) []any {
 			targets[i] = &m.Type
 		case "token":
 			targets[i] = &m.Token
-		case "app_id":
-			targets[i] = &m.App_id
+		case "app_language":
+			targets[i] = &m.App_language
+		case "app_name":
+			targets[i] = &m.App_name
 		case "variable":
 			targets[i] = &m.Variable
 		}
@@ -677,12 +697,14 @@ var styleTokenDefaultCols = []string{
 	"mode",
 	"type",
 	"token",
-	"app_id",
+	"app_language",
+	"app_name",
 	"variable",
 }
 
 var styleTokenPKCols = []string{
-	"app_id",
+	"app_language",
+	"app_name",
 	"mode",
 	"token",
 	"style",
@@ -695,7 +717,7 @@ func selectStyleTokenCols(selects *StyleTokenSelect, omits *StyleTokenOmit, forc
 		return styleTokenDefaultCols
 	}
 
-	anySelected := selects != nil && (selects.Style || selects.Value || selects.Mode || selects.Type || selects.Token || selects.App_id || selects.Variable || selects.App != nil)
+	anySelected := selects != nil && (selects.Style || selects.Value || selects.Mode || selects.Type || selects.Token || selects.App_language || selects.App_name || selects.Variable)
 
 	specs := []colSpec{
 		{"style", selects != nil && selects.Style, omits != nil && omits.Style, false},
@@ -703,7 +725,8 @@ func selectStyleTokenCols(selects *StyleTokenSelect, omits *StyleTokenOmit, forc
 		{"mode", selects != nil && selects.Mode, omits != nil && omits.Mode, false},
 		{"type", selects != nil && selects.Type, omits != nil && omits.Type, false},
 		{"token", selects != nil && selects.Token, omits != nil && omits.Token, false},
-		{"app_id", selects != nil && selects.App_id, omits != nil && omits.App_id, selects != nil && selects.App != nil},
+		{"app_language", selects != nil && selects.App_language, omits != nil && omits.App_language, false},
+		{"app_name", selects != nil && selects.App_name, omits != nil && omits.App_name, false},
 		{"variable", selects != nil && selects.Variable, omits != nil && omits.Variable, false},
 	}
 
@@ -722,7 +745,7 @@ func (s *StyleTokenSelect) hasAnyRelation() bool {
 	if s == nil {
 		return false
 	}
-	return s.App != nil
+	return false
 }
 
 type StyleTokenUpsertBuilder struct {
@@ -785,8 +808,12 @@ func (b *StyleTokenCreateBuilder) SetToken(v TokenTypeType) *StyleTokenCreateBui
 	b.assignments = append(b.assignments, FieldAssignment{Col: "token", Val: v})
 	return b
 }
-func (b *StyleTokenCreateBuilder) SetApp_id(v string) *StyleTokenCreateBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *StyleTokenCreateBuilder) SetApp_language(v AppLanguageType) *StyleTokenCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
+	return b
+}
+func (b *StyleTokenCreateBuilder) SetApp_name(v string) *StyleTokenCreateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
 	return b
 }
 func (b *StyleTokenCreateBuilder) SetVariable(v string) *StyleTokenCreateBuilder {
@@ -810,13 +837,14 @@ func (d *StyleTokenDelegate) Create() *StyleTokenCreateBuilder {
 }
 
 const (
-	providedStyleTokenStyle    uint64 = 1 << 0
-	providedStyleTokenValue    uint64 = 1 << 1
-	providedStyleTokenMode     uint64 = 1 << 2
-	providedStyleTokenType     uint64 = 1 << 3
-	providedStyleTokenToken    uint64 = 1 << 4
-	providedStyleTokenApp_id   uint64 = 1 << 5
-	providedStyleTokenVariable uint64 = 1 << 6
+	providedStyleTokenStyle        uint64 = 1 << 0
+	providedStyleTokenValue        uint64 = 1 << 1
+	providedStyleTokenMode         uint64 = 1 << 2
+	providedStyleTokenType         uint64 = 1 << 3
+	providedStyleTokenToken        uint64 = 1 << 4
+	providedStyleTokenApp_language uint64 = 1 << 5
+	providedStyleTokenApp_name     uint64 = 1 << 6
+	providedStyleTokenVariable     uint64 = 1 << 7
 )
 
 func assignmentsToStyleTokenCreate(assignments []FieldAssignment) (StyleTokenCreate, error) {
@@ -872,13 +900,23 @@ func assignmentsToStyleTokenCreate(assignments []FieldAssignment) (StyleTokenCre
 			} else {
 				errs.Add("token", a.Val, "type", "field token must be of type TokenTypeType")
 			}
-		case "app_id":
-			provided |= providedStyleTokenApp_id
-			if v, ok := a.Val.(string); ok {
-				input.App_id = v
-				errs.ValidateString("app_id", v, true, 0, false, false)
+		case "app_language":
+			provided |= providedStyleTokenApp_language
+			if v, ok := a.Val.(AppLanguageType); ok {
+				input.App_language = v
+				if !v.IsValid() {
+					errs.Add("app_language", v, "enum", fmt.Sprintf("invalid enum value %q for field app_language", v))
+				}
 			} else {
-				errs.Add("app_id", a.Val, "type", "field app_id must be of type string")
+				errs.Add("app_language", a.Val, "type", "field app_language must be of type AppLanguageType")
+			}
+		case "app_name":
+			provided |= providedStyleTokenApp_name
+			if v, ok := a.Val.(string); ok {
+				input.App_name = v
+				errs.ValidateString("app_name", v, true, 0, false, false)
+			} else {
+				errs.Add("app_name", a.Val, "type", "field app_name must be of type string")
 			}
 		case "variable":
 			provided |= providedStyleTokenVariable
@@ -905,8 +943,11 @@ func assignmentsToStyleTokenCreate(assignments []FieldAssignment) (StyleTokenCre
 	if provided&providedStyleTokenToken == 0 {
 		errs.Add("token", nil, "required", "field Token is required")
 	}
-	if provided&providedStyleTokenApp_id == 0 {
-		errs.Add("app_id", "", "required", "field App_id is required")
+	if provided&providedStyleTokenApp_language == 0 {
+		errs.Add("app_language", nil, "required", "field App_language is required")
+	}
+	if provided&providedStyleTokenApp_name == 0 {
+		errs.Add("app_name", "", "required", "field App_name is required")
 	}
 
 	if errs.HasErrors() {
@@ -916,8 +957,8 @@ func assignmentsToStyleTokenCreate(assignments []FieldAssignment) (StyleTokenCre
 }
 
 func (s *StyleTokenCreate) ToColsVals() (cols []string, vals []any) {
-	cols = make([]string, 0, 7)
-	vals = make([]any, 0, 7)
+	cols = make([]string, 0, 8)
+	vals = make([]any, 0, 8)
 	cols = append(cols, "style")
 	vals = append(vals, s.Style)
 	cols = append(cols, "value")
@@ -928,8 +969,10 @@ func (s *StyleTokenCreate) ToColsVals() (cols []string, vals []any) {
 	vals = append(vals, s.Type)
 	cols = append(cols, "token")
 	vals = append(vals, s.Token)
-	cols = append(cols, "app_id")
-	vals = append(vals, s.App_id)
+	cols = append(cols, "app_language")
+	vals = append(vals, s.App_language)
+	cols = append(cols, "app_name")
+	vals = append(vals, s.App_name)
 	if s.Variable != nil {
 		cols = append(cols, "variable")
 		vals = append(vals, *s.Variable)
@@ -1319,7 +1362,7 @@ func (d *StyleTokenDelegate) buildBulkInsertSQL(q *Queries, batch []*StyleTokenC
 		colMask |= input.colMask()
 	}
 
-	cols = make([]string, 0, 7)
+	cols = make([]string, 0, 8)
 	for i, c := range styleTokenDefaultCols {
 		if colMask&(1<<i) != 0 {
 			cols = append(cols, c)
@@ -1362,8 +1405,10 @@ func (d *StyleTokenDelegate) buildBulkInsertSQL(q *Queries, batch []*StyleTokenC
 				vals = append(vals, input.Type)
 			case "token":
 				vals = append(vals, input.Token)
-			case "app_id":
-				vals = append(vals, input.App_id)
+			case "app_language":
+				vals = append(vals, input.App_language)
+			case "app_name":
+				vals = append(vals, input.App_name)
 			case "variable":
 				if input.Variable != nil {
 					vals = append(vals, *input.Variable)
@@ -1619,24 +1664,26 @@ func StyleTokenConflictUpdate(fn func(u *StyleTokenUpsert)) *ConflictAction {
 }
 
 type StyleTokenUpsert struct {
-	Style    fieldUpsert[string]
-	Value    fieldUpsert[string]
-	Mode     fieldUpsert[ThemeModeType]
-	Type     fieldUpsert[StyleTypeType]
-	Token    fieldUpsert[TokenTypeType]
-	App_id   fieldUpsert[string]
-	Variable fieldUpsert[*string]
+	Style        fieldUpsert[string]
+	Value        fieldUpsert[string]
+	Mode         fieldUpsert[ThemeModeType]
+	Type         fieldUpsert[StyleTypeType]
+	Token        fieldUpsert[TokenTypeType]
+	App_language fieldUpsert[AppLanguageType]
+	App_name     fieldUpsert[string]
+	Variable     fieldUpsert[*string]
 }
 
 func newStyleTokenUpsert(up *ConflictUpdate) *StyleTokenUpsert {
 	return &StyleTokenUpsert{
-		Style:    fieldUpsert[string]{column: "style", update: up},
-		Value:    fieldUpsert[string]{column: "value", update: up},
-		Mode:     fieldUpsert[ThemeModeType]{column: "mode", update: up},
-		Type:     fieldUpsert[StyleTypeType]{column: "type", update: up},
-		Token:    fieldUpsert[TokenTypeType]{column: "token", update: up},
-		App_id:   fieldUpsert[string]{column: "app_id", update: up},
-		Variable: fieldUpsert[*string]{column: "variable", update: up},
+		Style:        fieldUpsert[string]{column: "style", update: up},
+		Value:        fieldUpsert[string]{column: "value", update: up},
+		Mode:         fieldUpsert[ThemeModeType]{column: "mode", update: up},
+		Type:         fieldUpsert[StyleTypeType]{column: "type", update: up},
+		Token:        fieldUpsert[TokenTypeType]{column: "token", update: up},
+		App_language: fieldUpsert[AppLanguageType]{column: "app_language", update: up},
+		App_name:     fieldUpsert[string]{column: "app_name", update: up},
+		Variable:     fieldUpsert[*string]{column: "variable", update: up},
 	}
 }
 
@@ -1722,18 +1769,32 @@ func (b *StyleTokenUpdateManyAndReturnBuilder) SetToken(v TokenTypeType) *StyleT
 	b.assignments = append(b.assignments, FieldAssignment{Col: "token", Val: v})
 	return b
 }
-func (b *StyleTokenUpdateBuilder) SetApp_id(v string) *StyleTokenUpdateBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *StyleTokenUpdateBuilder) SetApp_language(v AppLanguageType) *StyleTokenUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
 	return b
 }
 
-func (b *StyleTokenUpdateManyBuilder) SetApp_id(v string) *StyleTokenUpdateManyBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *StyleTokenUpdateManyBuilder) SetApp_language(v AppLanguageType) *StyleTokenUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
 	return b
 }
 
-func (b *StyleTokenUpdateManyAndReturnBuilder) SetApp_id(v string) *StyleTokenUpdateManyAndReturnBuilder {
-	b.assignments = append(b.assignments, FieldAssignment{Col: "app_id", Val: v})
+func (b *StyleTokenUpdateManyAndReturnBuilder) SetApp_language(v AppLanguageType) *StyleTokenUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_language", Val: v})
+	return b
+}
+func (b *StyleTokenUpdateBuilder) SetApp_name(v string) *StyleTokenUpdateBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
+	return b
+}
+
+func (b *StyleTokenUpdateManyBuilder) SetApp_name(v string) *StyleTokenUpdateManyBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
+	return b
+}
+
+func (b *StyleTokenUpdateManyAndReturnBuilder) SetApp_name(v string) *StyleTokenUpdateManyAndReturnBuilder {
+	b.assignments = append(b.assignments, FieldAssignment{Col: "app_name", Val: v})
 	return b
 }
 func (b *StyleTokenUpdateBuilder) SetVariable(v string) *StyleTokenUpdateBuilder {
@@ -2611,9 +2672,16 @@ func (d *StyleTokenDelegate) runDelete(ctx context.Context, where []PredicateOf[
 			var pkPreds []PredicateOf[StyleToken]
 			pkPreds = append(pkPreds, Predicate[StyleToken]{
 				Data: PredicateData{
-					Column:   "app_id",
+					Column:   "app_language",
 					Operator: "=",
-					Value:    res.App_id,
+					Value:    res.App_language,
+				},
+			})
+			pkPreds = append(pkPreds, Predicate[StyleToken]{
+				Data: PredicateData{
+					Column:   "app_name",
+					Operator: "=",
+					Value:    res.App_name,
 				},
 			})
 			pkPreds = append(pkPreds, Predicate[StyleToken]{
@@ -2788,30 +2856,9 @@ func (d *StyleTokenDelegate) runCount(ctx context.Context, params QueryParams[St
 	return count, nil
 }
 func (d *StyleTokenDelegate) loadRelations(ctx context.Context, records []*StyleToken, selects *StyleTokenSelect) error {
+	_ = ctx
 	if selects == nil || len(records) == 0 {
 		return nil
-	}
-	if selects.App != nil {
-		relationSelects, relationOmits, relationParams := selects.App.GetRelationParams()
-		returningCols := selectAppCols(relationSelects, relationOmits, "name")
-		// Current model holds the FK: StyleToken.app_id
-		allChildren, err := loadRelation(
-			ctx, d.client, records,
-			directKey(func(p *StyleToken) string { return p.App_id }),
-			"App",
-			"name",
-			returningCols,
-			scanInto(returningCols, (*App).ScanFields),
-			directKey(func(c *App) string { return c.Name }),
-			setOne(func(p *StyleToken, c *App) { p.App = c }),
-			relationParams,
-		)
-		if err != nil {
-			return fmt.Errorf("loading app: %w", err)
-		}
-		if err := d.client.App.loadRelations(ctx, allChildren, relationSelects); err != nil {
-			return err
-		}
 	}
 
 	return nil
